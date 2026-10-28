@@ -359,6 +359,26 @@ void Ui::select(MenuItem m, const Env& env) {
   remoteAction(a, r, now);
 }
 
+bool Ui::startGame(bool duet, uint32_t nowMs) {
+  const PetState& s = pet_.state();
+  if (s.stage == Stage::Egg || s.stage == Stage::Gone || s.lightsOff) return false;
+  if (screen_ != Screen::Main && screen_ != Screen::Anim && !inGame()) return false;
+  if (duet) {
+    duet_.start(rng_.next(), nowMs);
+    screen_ = Screen::Duet;
+  } else {
+    peek_.start(rng_.next(), nowMs);
+    screen_ = Screen::Peek;
+  }
+  t0_ = nowMs;
+  return true;
+}
+
+void Ui::gameInput(Press p, uint32_t nowMs) {
+  if (screen_ == Screen::Duet) duet_.input(p, nowMs);
+  else if (screen_ == Screen::Peek) peek_.input(nowMs);
+}
+
 // ---------------------------------------------------------------- drawing
 
 void Ui::draw(const Env& env) {
@@ -674,7 +694,7 @@ void Ui::drawGone(const Env& env) {
   int x = 28 + ((el / 500) % 2 ? 1 : -1);
   frame_.sprite(spr::feather, x, y);
   frame_.text("BYE", 1, 1);
-  if ((el / 1500) % 2) frame_.text("HOLD", 1, 14);
+  if ((el / 1500) % 2) frame_.text("SEE APP", 1, 14);
 }
 
 void Ui::drawOta(const Env& env) {

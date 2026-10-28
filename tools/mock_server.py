@@ -20,6 +20,7 @@ STATE = {
     "happy": 2, "poop": 1, "sick": False, "lightsOff": False, "weight": 94, "ageDays": 5, "mood": "content",
     "attention": False, "tune": "02431", "tuneLevel": 2, "night": False, "setup": SETUP,
     "host": "mochi" if "--named" in sys.argv else "okame", "fw": "0.1.0",
+    "game": {"type": "duet", "phase": "listening", "round": 1, "rounds": 3, "wins": 1} if "--game" in sys.argv else None,
 }
 NETS = ["Home Wi-Fi", "Phone hotspot"]
 TOKEN = "f" * 32
@@ -83,6 +84,14 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, {"token": TOKEN})
             return self.send(403, {"error": "wrong code", "triesLeft": 4})
         if self.path in ("/api/tune", "/api/networks/add", "/api/networks/remove", "/api/new-egg", "/api/ota/check"):
+            return self.send(200, {"ok": True})
+        if self.path == "/api/game":
+            STATE["game"] = {"type": q.get("g"), "phase": "listening" if q.get("g") == "duet" else "hidden",
+                             "round": 0, "rounds": 3 if q.get("g") == "duet" else 5, "wins": 0, "hits": 0}
+            return self.send(200, {"ok": True})
+        if self.path == "/api/game/input":
+            return self.send(200, {"game": STATE.get("game")})
+        if self.path == "/api/pair/request":
             return self.send(200, {"ok": True})
         if self.path == "/api/practice":
             return self.send(200, {"learned": True, "level": 3})

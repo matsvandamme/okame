@@ -126,6 +126,7 @@ ul.nets li button { font: inherit; font-size: 12px; border: 2px solid var(--ink)
   opacity: 0; visibility: hidden;
 }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
+.pad { font-size: 20px; padding: 22px 10px; }
 .code { letter-spacing: 12px; text-align: center; font-family: var(--mono); font-size: 28px !important; font-weight: 800; }
 footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 </style>
@@ -166,6 +167,23 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <h2><span id="title">Your bird</span> <span class="jp" id="meta"></span></h2>
     <div class="grid" id="careGrid"></div>
     <p class="hint" id="moodHint"></p>
+    <button class="btn dark wide" id="hatchBtn" hidden>🥚 Hatch a new egg</button>
+  </section>
+
+  <section class="card panel-care" id="playCard">
+    <h2>Play <span class="jp">あそぶ</span></h2>
+    <div id="gamePick" class="row">
+      <button class="btn" id="startDuet">🎵 Whistle duet</button>
+      <button class="btn" id="startPeek">🌳 Peekaboo</button>
+    </div>
+    <div id="gameLive" hidden>
+      <p class="hint" id="gameHint">…</p>
+      <div class="row" id="duetPad">
+        <button class="btn pad" id="padShort">· short</button>
+        <button class="btn pad" id="padLong">— long</button>
+      </div>
+      <button class="btn dark pad wide" id="padPeek">Peek!</button>
+    </div>
   </section>
 
   <section class="card panel" id="tab-tune" hidden>
@@ -197,7 +215,9 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
   <section class="card panel" id="tab-settings" hidden>
     <h2>Settings <span class="jp">せってい</span></h2>
     <div id="locked">
-      <p class="hint">Settings are protected. <b>Hold the dongle's button for 5 seconds</b>: a 4-digit code appears on its screen. Type it here.</p>
+      <p class="hint">Settings are protected. Tap <b>Show code</b> and a 4-digit code appears on the egg's screen for two minutes. Type it here.</p>
+      <button class="btn wide" id="showCode">Show code on the egg</button>
+      <p></p>
       <div class="row"><input inputmode="numeric" class="code" id="codeInput" maxlength="4" autocomplete="one-time-code" placeholder="····"><button class="btn dark" id="pairBtn" style="flex:0 0 auto">Unlock</button></div>
     </div>
     <div id="unlocked" hidden>
@@ -319,10 +339,13 @@ function applyState(s) {
   $("meta").textContent = s.stage === "egg" ? "" : `${stage} · ${s.ageDays}d · ${s.weight}g`;
   let hint = MOOD_TEXT[s.mood] || "";
   if (s.stage === "egg") hint = "The egg is wobbling… it will hatch in a couple of minutes.";
-  if (s.stage === "gone") hint = "Your bird flew off to find a friend. Hold the dongle's button to start with a new egg.";
+  if (s.stage === "gone") hint = "Your bird flew off to find a friend. Start again with a new egg.";
   if (s.poop >= 2) hint += " The cage needs a bath.";
   if (s.night && !s.lightsOff && s.stage !== "egg") hint += " It's late: cover the cage.";
   $("moodHint").textContent = hint;
+  $("hatchBtn").hidden = s.stage !== "gone";
+  $("playCard").hidden = s.stage === "egg" || s.stage === "gone";
+  showGame(s.game);
   $("nameCard").hidden = !!s.name || s.stage === "egg" || s.stage === "gone";
   $("setupBanner").hidden = !s.setup;
   $("online").lastChild.textContent = s.setup ? " setup" : " live";
@@ -361,6 +384,51 @@ for (const [act, icon, label] of CARE) {
   };
   $("careGrid").append(b);
 }
+
+// ---------- games ----------
+const GAME_TEXT = {
+  duet: { showing: "Listen… it's whistling a pattern on the egg.", listening: "Your turn! Repeat it: · short, — long.",
+          won: "Perfect duet! ♥", lost: "Oops, not quite.", done: "" },
+  peek: { hidden: "It's hiding behind the tree… watch the egg!", peeking: "NOW! Tap Peek!", hit: "Found you! ♥",
+          miss: "Too slow (or too early).", done: "" },
+};
+function showGame(g) {
+  $("gamePick").hidden = !!g;
+  $("gameLive").hidden = !g;
+  if (!g) return;
+  const score = g.type === "duet" ? `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · wins ${g.wins}` : `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · found ${g.hits}`;
+  $("gameHint").textContent = `${GAME_TEXT[g.type][g.phase] || ""}  ${score}`;
+  $("duetPad").hidden = g.type !== "duet";
+  $("padPeek").hidden = g.type !== "peek";
+  const live = g.type === "duet" ? g.phase === "listening" : (g.phase === "hidden" || g.phase === "peeking");
+  document.querySelectorAll(".pad").forEach((b) => b.disabled = !live);
+}
+async function startGame(g) {
+  ac();
+  const r = await api("/api/game", { g });
+  if (!r.ok) return toast("Not now: it's asleep, busy or still an egg.");
+  pollGame();
+}
+let gamePoll = null;
+function pollGame() {
+  clearInterval(gamePoll);
+  gamePoll = setInterval(async () => {
+    const s = await api("/api/state");
+    applyState(s);
+    if (!s.game) { clearInterval(gamePoll); gamePoll = null; }
+  }, 250);
+}
+async function gameInput(p) {
+  const r = await api("/api/game/input", { p });
+  if (r.game) showGame(r.game);
+  if (p === "short") chirp(2400, 0, 0.1); else if (p === "long") chirp(2000, 0, 0.35, 1.25); else chirp(2800, 0, 0.08);
+}
+$("startDuet").onclick = () => startGame("duet");
+$("startPeek").onclick = () => startGame("peek");
+$("padShort").onclick = () => gameInput("short");
+$("padLong").onclick = () => gameInput("long");
+$("padPeek").onclick = () => gameInput("tap");
+$("hatchBtn").onclick = async () => { await api("/api/new-egg"); toast("A fresh egg. 🥚"); refresh(); };
 
 // ---------- name ----------
 $("nameBtn").onclick = async () => {
@@ -475,7 +543,12 @@ $("scan").onchange = () => { if ($("scan").value) $("ssid").value = $("scan").va
 $("pairBtn").onclick = async () => {
   const r = await api("/api/pair", { code: $("codeInput").value.trim() });
   if (r.token) { token = r.token; sessionStorage.setItem("okame-token", token); toast("Unlocked for 30 minutes."); loadSettings(); }
-  else toast(r.triesLeft ? `Wrong code. ${r.triesLeft} tries left.` : "No valid code. Hold the button for 5 s for a new one.");
+  else toast(r.triesLeft ? `Wrong code. ${r.triesLeft} tries left.` : "No valid code. Tap Show code for a new one.");
+};
+$("showCode").onclick = async () => {
+  const r = await api("/api/pair/request");
+  toast(r.ok ? "Look at the egg: the code is on its screen." : "Just a moment, then try again.");
+  $("codeInput").focus();
 };
 $("addNet").onclick = async () => {
   const ssid = $("ssid").value.trim();
@@ -504,6 +577,7 @@ $("newEgg").onclick = async () => {
 document.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
   document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", x === t));
   document.querySelectorAll(".panel").forEach((p) => p.hidden = p.id !== "tab-" + t.dataset.tab);
+  $("playCard").style.display = t.dataset.tab === "care" ? "" : "none";
   if (t.dataset.tab === "settings") loadSettings();
   if (t.dataset.tab === "photo") drawPhoto();
 });

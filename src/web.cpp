@@ -60,6 +60,25 @@ String jsonString(const char* s) {
   return o + "\"";
 }
 
+// Game status for the phone's controls (called with the lock held).
+String gameJson() {
+  Ui& ui = app::ui;
+  if (ui.screen() == Screen::Duet) {
+    const Duet& d = ui.duet();
+    const char* ph[] = {"showing", "listening", "won", "lost", "done"};
+    return String("{\"type\":\"duet\",\"phase\":\"") + ph[int(d.phase())] + "\",\"round\":" + d.round() +
+           ",\"rounds\":" + Duet::ROUNDS + ",\"wins\":" + d.wins() + ",\"length\":" + d.length() +
+           ",\"entered\":" + d.entered() + "}";
+  }
+  if (ui.screen() == Screen::Peek) {
+    const Peekaboo& p = ui.peek();
+    const char* ph[] = {"hidden", "peeking", "hit", "miss", "done"};
+    return String("{\"type\":\"peek\",\"phase\":\"") + ph[int(p.phase())] + "\",\"round\":" + p.round() +
+           ",\"rounds\":" + Peekaboo::ROUNDS + ",\"hits\":" + p.hits() + "}";
+  }
+  return "null";
+}
+
 String stateJson() {
   app::Lock lock;
   uint32_t now = app::epoch();
@@ -84,6 +103,7 @@ String stateJson() {
   j += ",\"setup\":" + String(net::apActive() ? "true" : "false");
   j += ",\"host\":" + jsonString(net::hostname().c_str());
   j += ",\"fw\":\"" FW_NAME "\"";
+  j += ",\"game\":" + gameJson();
   j += ",\"frame\":\"" + String(frame) + "\"}";
   return j;
 }
@@ -178,6 +198,27 @@ void handlePractice(AsyncWebServerRequest* r) {
   sendJson(r, 200, String("{\"learned\":") + (learned ? "true" : "false") + ",\"level\":" + level + "}");
 }
 
+void handleGame(AsyncWebServerRequest* r) {
+  String g = param(r, "g");
+  if (g != "duet" && g != "peek") return sendJson(r, 400, "{\"error\":\"unknown game\"}");
+  bool ok;
+  {
+    app::Lock lock;
+    ok = app::ui.startGame(g == "duet", millis());
+  }
+  sendJson(r, ok ? 200 : 409, ok ? "{\"ok\":true}" : "{\"error\":\"not now\"}");
+}
+
+void handleGameInput(AsyncWebServerRequest* r) {
+  String p = param(r, "p");
+  {
+    app::Lock lock;
+    if (!app::ui.inGame()) return sendJson(r, 409, "{\"error\":\"no game\"}");
+    app::ui.gameInput(p == "long" ? Press::Long : Press::Short, millis());
+  }
+  sendJson(r, 200, "{\"game\":" + [] { app::Lock lock; return gameJson(); }() + "}");
+}
+
 void handlePair(AsyncWebServerRequest* r) {
   int left = 0;
   String token = app::tryPair(param(r, "code"), left);
@@ -216,6 +257,12 @@ void begin() {
   server.on("/api/tune", HTTP_POST, handleTune);
   server.on("/api/practice", HTTP_POST, handlePractice);
   server.on("/api/pair", HTTP_POST, handlePair);
+  server.on("/api/pair/request", HTTP_POST, [](AsyncWebServerRequest* r) {
+    bool ok = app::requestPair();
+    sendJson(r, ok ? 200 : 429, ok ? "{\"ok\":true}" : "{\"error\":\"wait a few seconds\"}");
+  });
+  server.on("/api/game", HTTP_POST, handleGame);
+  server.on("/api/game/input", HTTP_POST, handleGameInput);
   server.on("/api/settings", HTTP_GET, handleSettings);
   server.on("/api/scan", HTTP_GET, [](AsyncWebServerRequest* r) {
     if (!authorized(r)) return denied(r);
@@ -231,9 +278,10 @@ void begin() {
     sendJson(r, 200, net::removeNetwork(param(r, "ssid").c_str()) ? "{\"ok\":true}" : "{\"error\":\"not found\"}");
   });
   server.on("/api/new-egg", HTTP_POST, [](AsyncWebServerRequest* r) {
-    if (!authorized(r)) return denied(r);
     {
       app::Lock lock;
+      // Starting over after the bird flew away needs no code; otherwise it's a setting.
+      if (app::pet.state().stage != Stage::Gone && !authorized(r)) return denied(r);
       app::pet.reset(app::epoch());
     }
     app::requestSave();

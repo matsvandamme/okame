@@ -17,6 +17,7 @@ constexpr uint32_t AP_AFTER_MS = 60 * 1000;           // no saved network for th
 constexpr uint32_t SAVE_EVERY_MS = 5 * 60 * 1000;
 constexpr uint32_t SAVE_MIN_GAP_MS = 10 * 1000;
 constexpr uint32_t PAIR_VALID_MS = 2 * 60 * 1000;
+constexpr uint32_t PAIR_REQUEST_GAP_MS = 10 * 1000;   // stops a page from spamming the LCD with codes
 constexpr uint32_t SESSION_VALID_MS = 30 * 60 * 1000;
 constexpr int PAIR_MAX_TRIES = 5;
 constexpr uint32_t OTA_CHECK_EVERY_S = 24 * 3600;
