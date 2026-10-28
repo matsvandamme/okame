@@ -7,6 +7,8 @@
 #include "config.h"
 #include "net.h"
 #include "relay_cert.h"
+#include <mbedtls/x509_crt.h>
+#include <esp_log.h>
 
 namespace web {
 String stateJson();
@@ -25,8 +27,13 @@ String key;
 SemaphoreHandle_t mu = xSemaphoreCreateMutex();
 std::vector<String> inbox;   // raw JSON commands waiting for the main loop
 std::vector<Ack> acks;       // results waiting for the next poll
+std::vector<String> shows;   // notes and pictures waiting their turn on the screen
 int pendingMsgAck = -1;      // note on screen: ack when it has scrolled by
-volatile uint32_t lastOk = 0;
+String pendingMsg;           // ... and the command itself, to replay it if something interrupts it
+int seen[32];                // recent command ids, so a resent command is not applied twice
+int seenAt = 0;
+volatile uint32_t lastOk = 0, attempts = 0;
+char lastErr[64] = "none";
 String lastMsg = "null";
 
 struct Locked {
@@ -78,11 +85,17 @@ bool poll() {
   cfg.timeout_ms = 15000;
   cfg.buffer_size = 2048;
   esp_http_client_handle_t c = esp_http_client_init(&cfg);
-  if (!c) return false;
+  attempts++;
+  if (!c) {
+    strlcpy(lastErr, "client init failed", sizeof lastErr);
+    return false;
+  }
   esp_http_client_set_header(c, "Content-Type", "application/json");
   esp_http_client_set_header(c, "X-Okame-Key", key.c_str());
   bool ok = false;
-  if (esp_http_client_open(c, req.length()) == ESP_OK &&
+  esp_err_t oe = esp_http_client_open(c, req.length());
+  if (oe != ESP_OK) snprintf(lastErr, sizeof lastErr, "open: %s", esp_err_to_name(oe));
+  if (oe == ESP_OK &&
       esp_http_client_write(c, req.c_str(), req.length()) == (int)req.length()) {
     esp_http_client_fetch_headers(c);
     if (esp_http_client_get_status_code(c) == 200) {
@@ -102,7 +115,7 @@ bool poll() {
         }
       }
     } else {
-      log_w("relay: HTTP %d", esp_http_client_get_status_code(c));
+      snprintf(lastErr, sizeof lastErr, "HTTP %d", esp_http_client_get_status_code(c));
     }
   }
   esp_http_client_close(c);
@@ -143,10 +156,21 @@ bool unhex(const char* hex, uint8_t* out, size_t n) {
   return true;
 }
 
-void apply(JsonDocument& cmd) {
+bool seenBefore(int id) {
+  for (int v : seen)
+    if (v == id) return true;
+  seen[seenAt++ % 32] = id;
+  return false;
+}
+
+void apply(JsonDocument& cmd, const String& raw) {
   int id = cmd["id"] | 0;
   String type = cmd["type"] | "";
   uint32_t now = millis();
+  if (type == "msg" || type == "pic") {  // one thing on the screen at a time, in order
+    shows.push_back(raw);
+    return;
+  }
   app::Lock lock;
   if (type == "act") {
     String a = cmd["action"] | "";
@@ -163,25 +187,6 @@ void apply(JsonDocument& cmd) {
     if (r == Result::Ok) app::requestSave();
     const char* names[] = {"ok", "refused", "not-needed", "sleeping"};
     ack(id, names[int(r)]);
-  } else if (type == "msg") {
-    String lcd = cmd["lcd"] | "";
-    app::ui.showMessage(cmd["from"] | "", lcd.c_str(), now);
-    JsonDocument m;
-    m["from"] = cmd["from"] | "";
-    m["text"] = cmd["text"] | "";
-    m["translation"] = cmd["translation"] | "";
-    m["at"] = app::epoch();
-    lastMsg = "";
-    serializeJson(m, lastMsg);
-    prefs.putString("msg", lastMsg);
-    pendingMsgAck = id;
-  } else if (type == "pic") {
-    static uint8_t frames[8][100];
-    int n = 0;
-    for (const char* f : cmd["frames"].as<JsonArray>())
-      if (n < 8 && f && unhex(f, frames[n], 100)) n++;
-    if (n) app::ui.showPicture(&frames[0][0], n, cmd["ms"] | 300, cmd["secs"] | 8, now);
-    ack(id, n ? "shown" : "bad");
   } else if (type == "tune") {
     String t = cmd["notes"] | "";
     uint8_t notes[rules::TUNE_MAX];
@@ -206,11 +211,54 @@ void apply(JsonDocument& cmd) {
     ack(id, "unknown");
   }
 }
+// Put the next note or picture on the screen. Called with the app lock held, when the screen is free.
+void show(const String& raw) {
+  JsonDocument cmd;
+  if (deserializeJson(cmd, raw)) return;
+  int id = cmd["id"] | 0;
+  uint32_t now = millis();
+  if (String(cmd["type"] | "") == "msg") {
+    String lcd = cmd["lcd"] | "";
+    app::ui.showMessage(cmd["from"] | "", lcd.c_str(), now);
+    app::ui.messageDone();  // clear a stale flag from an earlier note
+    JsonDocument m;
+    m["from"] = cmd["from"] | "";
+    m["text"] = cmd["text"] | "";
+    m["translation"] = cmd["translation"] | "";
+    m["at"] = app::epoch();
+    lastMsg = "";
+    serializeJson(m, lastMsg);
+    prefs.putString("msg", lastMsg);
+    pendingMsgAck = id;
+    pendingMsg = raw;
+  } else {
+    static uint8_t frames[8][100];
+    int n = 0;
+    for (const char* f : cmd["frames"].as<JsonArray>())
+      if (n < 8 && f && unhex(f, frames[n], 100)) n++;
+    if (n) app::ui.showPicture(&frames[0][0], n, cmd["ms"] | 300, cmd["secs"] | 8, now);
+    ack(id, n ? "shown" : "bad");
+  }
+}
+
+// Free for a note: awake on the main screens, nothing else showing.
+bool screenFree() {
+  Screen s = app::ui.screen();
+  return s == Screen::Main || s == Screen::Lights;
+}
 }  // namespace
 
 namespace cloud {
 
 void begin() {
+  {  // Check the pinned certificate parses (diagnostics).
+    mbedtls_x509_crt crt;
+    mbedtls_x509_crt_init(&crt);
+    int ret = mbedtls_x509_crt_parse(&crt, (const unsigned char*)RELAY_CERT_PEM, strlen(RELAY_CERT_PEM) + 1);
+    snprintf(lastErr, sizeof lastErr, "cert parse %d, ca=%d", ret, crt.private_ca_istrue);
+    mbedtls_x509_crt_free(&crt);
+  }
+  for (int& v : seen) v = -1;
   prefs.begin("cloud", false);
   key = prefs.getString("key", "");
   lastMsg = prefs.getString("msg", "null");
@@ -225,22 +273,33 @@ void loop() {
   }
   for (auto& s : todo) {
     JsonDocument cmd;
-    if (!deserializeJson(cmd, s)) apply(cmd);
+    if (!deserializeJson(cmd, s) && !seenBefore(cmd["id"] | 0)) apply(cmd, s);
   }
-  if (pendingMsgAck >= 0) {
-    bool done;
-    {
-      app::Lock lock;
-      done = app::ui.messageDone();
-    }
-    if (done) {
+  app::Lock lock;
+  if (pendingMsgAck >= 0 && app::ui.screen() != Screen::Message) {
+    if (app::ui.messageDone()) {  // scrolled all the way through
       ack(pendingMsgAck, "shown");
       pendingMsgAck = -1;
+      pendingMsg = "";
+    } else {  // pushed off the screen (sleep, pairing, a game...): play it again later
+      shows.insert(shows.begin(), pendingMsg);
+      pendingMsg = "";
+      pendingMsgAck = -1;
     }
+  }
+  if (pendingMsgAck < 0 && !shows.empty() && screenFree()) {
+    String next = shows.front();
+    shows.erase(shows.begin());
+    show(next);
   }
 }
 
 bool connected() { return lastOk && millis() - lastOk < 60000; }
+
+String status() {
+  return String("key=") + key.length() + " online=" + net::online() + " attempts=" + attempts +
+         " lastOk=" + (lastOk ? (millis() - lastOk) / 1000 : -1) + "s ago err=" + lastErr;
+}
 
 void setKey(const String& hex) {
   key = hex;

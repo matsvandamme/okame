@@ -78,6 +78,12 @@ canvas.lcd { display: block; width: 100%; image-rendering: pixelated; border-rad
 }
 .card h2 { margin: 0 0 12px; font-size: 18px; display: flex; justify-content: space-between; align-items: baseline; }
 .card h2 .jp { font-size: 12px; font-weight: 700; opacity: .75; }
+.letter { background: #fffdf4 repeating-linear-gradient(transparent 0 27px, #f1e6c0 27px 28px); position: relative; }
+.letter::before { content: ""; position: absolute; inset: 5px; border-radius: 12px; pointer-events: none;
+  border: 3px dashed transparent; border-image: repeating-linear-gradient(45deg, #e8453c 0 8px, transparent 8px 14px, #2a5bd7 14px 22px, transparent 22px 28px) 3; }
+.letter .from { font-size: 13px; font-weight: 700; opacity: .7; margin: 0 0 6px; }
+.letter .body { font-size: 20px; line-height: 28px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.letter .tr { font-size: 15px; line-height: 28px; margin: 4px 0 0; opacity: .75; white-space: pre-wrap; }
 .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
 .tab {
   font: inherit; font-weight: 800; font-size: 13px;
@@ -130,6 +136,9 @@ ul.nets li button { font: inherit; font-size: 14px; border: 2px solid var(--ink)
 }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
 .pad { font-size: 20px; padding: 22px 10px; }
+#padLeft, #padRight { touch-action: none; font-size: 28px; }
+button.hat { opacity: .35; } button.hat.got { opacity: 1; } button.hat.on { background: var(--yellow); }
+.pop { animation: pop .5s ease; } @keyframes pop { 0% { transform: scale(.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 #padPeek.now { background: var(--orange); color: var(--ink); transform: scale(1.04); }
 .egg { max-width: 330px; margin: 0 auto 20px; }
 #moodHint { margin-top: 14px; }
@@ -167,6 +176,13 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="row"><input type="text" id="nameInput" maxlength="16" autocomplete="off" placeholder="e.g. Mochi"><button class="btn dark" id="nameBtn" style="flex:0 0 auto">Save</button></div>
   </section>
 
+  <section class="card letter" id="noteCard" hidden>
+    <h2>A note for you <span class="jp">おてがみ</span></h2>
+    <p class="from" id="noteFrom"></p>
+    <p class="body" id="noteText"></p>
+    <p class="tr" id="noteTr" hidden></p>
+  </section>
+
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" aria-selected="true" data-tab="care">Care<span class="jp">おせわ</span></button>
     <button class="tab" role="tab" aria-selected="false" data-tab="tune">Tune<span class="jp">うた</span></button>
@@ -183,11 +199,12 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 
   <section class="card panel-care" id="playCard">
     <h2>Play <span class="jp">あそぶ</span></h2>
-    <p class="hint" id="playHint">Duet: copy the bird's short and long whistles. Peekaboo: tap Peek! the moment it pops out.</p>
+    <p class="hint" id="playHint">Duet: listen and whistle the melody back. Peekaboo: tap Peek! when it pops out. Seed Rain: catch the falling seeds!</p>
     <div id="gamePick" class="row">
       <button class="btn" id="startDuet">🎵 Whistle duet</button>
       <button class="btn" id="startPeek">🌳 Peekaboo</button>
     </div>
+    <button class="btn wide" id="startRain" style="margin-top:8px">🌧️ Seed Rain <small id="bestRain" style="opacity:.6"></small></button>
     <div id="gameLive" hidden>
       <canvas class="lcd mini" id="lcdMini" width="160" height="80"></canvas>
       <p class="hint" id="gameHint">…</p>
@@ -196,7 +213,15 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
         <button class="btn pad" id="padLong">— long</button>
       </div>
       <button class="btn dark pad wide" id="padPeek">Peek!</button>
+      <div class="row" id="rainPad"><button class="btn pad" id="padLeft">◀</button><button class="btn pad" id="padRight">▶</button></div>
     </div>
+  </section>
+
+  <section class="card panel-care" id="wardCard">
+    <h2>Wardrobe &amp; gifts <span class="jp">おしゃれ</span></h2>
+    <button class="btn dark wide" id="giftBtn">🎁 Open today's gift</button>
+    <div class="grid" id="hats" style="margin-top:12px"></div>
+    <p class="hint" id="hatHint">Care for your bird and play to unlock more.</p>
   </section>
 
   <section class="card panel" id="tab-tune" hidden>
@@ -262,6 +287,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 <script>
 "use strict";
 const ICONS = /*ICONS*/{};
+const PAGE = /*PAGE*/"dev";  // the egg reports which page it serves; an old open page reloads itself
 const $ = (id) => document.getElementById(id);
 const PAL = { bg: "#9eaa8a", ink: "#1e2418", ghost: "#929e7f", shadow: "#8a967a" };
 let state = null, frameHex = "", token = sessionStorage.getItem("okame-token") || "";
@@ -358,7 +384,21 @@ const MOOD_TEXT = {
   sad: "Feeling neglected: try some seed or a scritch.", sick: "Looks poorly: a visit to the vet will help.",
   asleep: "Sleeping. Shh…",
 };
+// The latest Telegram note, in full: the egg's screen can only show capitals, this shows the real words.
+function showNote(m) {
+  $("noteCard").hidden = !(m && m.text);
+  if (!m || !m.text) return;
+  const ago = m.at > 1700000000 ? Math.max(0, Date.now() / 1000 - m.at) : -1;
+  const when = ago < 0 ? "" : ago < 3600 ? " · just now" : ago < 86400 ? ` · ${Math.round(ago / 3600)} h ago` :
+    ` · ${Math.round(ago / 86400)} d ago`;
+  $("noteFrom").textContent = `💌 From ${m.from || "a friend"}${when}`;
+  $("noteText").textContent = m.text;
+  $("noteTr").hidden = !m.translation;
+  $("noteTr").textContent = m.translation || "";
+}
+
 function applyState(s) {
+  if (s.page && PAGE !== "dev" && s.page !== PAGE) { location.reload(); return; }
   state = s;
   if (s.frame) showFrame(s.frame);
   $("food").textContent = hearts(s.hunger);
@@ -376,6 +416,9 @@ function applyState(s) {
   $("careGrid").hidden = s.stage === "egg" || s.stage === "gone";
   if (lightSpan) lightSpan.textContent = s.lightsOff ? "Uncover" : "Cover cage";
   $("playCard").hidden = s.stage === "egg" || s.stage === "gone";
+  $("wardCard").hidden = s.stage === "egg" || s.stage === "gone";
+  showNote(s.msg);
+  showWardrobe(s);
   showGame(s.game);
   $("nameCard").hidden = !!s.name || s.stage === "egg" || s.stage === "gone";
   $("setupBanner").hidden = !s.setup;
@@ -421,15 +464,16 @@ for (const [act, icon, label] of CARE) {
 
 // ---------- games ----------
 const GAME_TEXT = {
-  duet: { showing: "Listen… it's whistling a pattern on the egg.", listening: "Your turn! Tap the same pattern the bird showed.",
+  rain: { playing: "Catch the seeds! Golden millet is worth 3." },
+  duet: { showing: "Listen… it's whistling a melody!", listening: "Your turn! Whistle it back: · short, — long.",
           won: "Perfect duet! ♥", lost: "Oops, not quite.", done: "" },
   peek: { hidden: "It's hiding behind the tree… watch the egg!", peeking: "NOW! Tap Peek!", hit: "Found you! ♥",
           miss: "Too slow (or too early).", done: "" },
 };
-let lastGame = null;
+let lastGame = null, lastNote = -1;
 function showGame(g) {
   const starting = g && !lastGame;
-  if (!g && lastGame) toast(lastGame.type === "duet" ? `Duet over: ${lastGame.wins}/${lastGame.rounds} rounds ♥` : `Found it ${lastGame.hits}/${lastGame.rounds} times ♥`);
+  if (!g && lastGame) toast(lastGame.type === "rain" ? `${lastGame.score} seeds caught! ${lastGame.score > lastGame.best ? "New record! 🏆" : "♥"}` : lastGame.type === "duet" ? `Duet over: ${lastGame.wins}/${lastGame.rounds} rounds ♥` : `Found it ${lastGame.hits}/${lastGame.rounds} times ♥`);
   lastGame = g;
   $("gamePick").hidden = !!g;
   $("gameLive").hidden = !g;
@@ -437,13 +481,20 @@ function showGame(g) {
   if (!g) return;
   if (frameHex) drawLcd($("lcdMini").getContext("2d"), frameHex);
   if (starting && !$("tab-care").hidden) requestAnimationFrame(() => $("playCard").scrollIntoView({ behavior: "smooth", block: "end" }));
-  const score = g.type === "duet" ? `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · wins ${g.wins}` : `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · found ${g.hits}`;
+  const score = g.type === "rain" ? `Score ${g.score} · ${"♥".repeat(g.lives)} · best ${g.best}`
+    : g.type === "duet" ? `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · wins ${g.wins}` : `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · found ${g.hits}`;
+  if (g.type === "duet" && g.phase === "showing" && g.notes && g.showing >= 0 && g.showing !== lastNote) {
+    const long = g.notes[g.showing] === "L";  // whistle along with the egg
+    chirp(long ? 2000 : 2500, 0, long ? 0.5 : 0.18, long ? 1.25 : 1.08);
+  }
+  lastNote = g.type === "duet" ? g.showing : -1;
   const prog = (g.type === "duet" && g.phase === "listening" && g.length != null) ? "  " + "●".repeat(g.entered) + "○".repeat(Math.max(0, g.length - g.entered)) : "";
   $("gameHint").textContent = `${GAME_TEXT[g.type][g.phase] || ""}${prog}  ${score}`;
   $("padPeek").classList.toggle("now", g.type === "peek" && g.phase === "peeking");
   $("duetPad").hidden = g.type !== "duet";
   $("padPeek").hidden = g.type !== "peek";
-  const live = g.type === "duet" ? g.phase === "listening" : (g.phase === "hidden" || g.phase === "peeking");
+  $("rainPad").hidden = g.type !== "rain";
+  const live = g.type === "rain" || (g.type === "duet" ? g.phase === "listening" : (g.phase === "hidden" || g.phase === "peeking"));
   document.querySelectorAll(".pad").forEach((b) => b.disabled = !live);
 }
 async function startGame(g) {
@@ -463,12 +514,20 @@ function pollGame() {
   }, 250);
 }
 async function gameInput(p) {
-  if (p === "short") chirp(2400, 0, 0.1); else if (p === "long") chirp(2000, 0, 0.35, 1.25); else chirp(2800, 0, 0.08);
+  if (p === "short") chirp(2400, 0, 0.1); else if (p === "long") chirp(2000, 0, 0.35, 1.25); else if (p === "tap") chirp(2800, 0, 0.08);
   const r = await api("/api/game-input", { p });
   if (r.game) showGame(r.game);
 }
 $("startDuet").onclick = () => startGame("duet");
 $("startPeek").onclick = () => startGame("peek");
+$("startRain").onclick = () => startGame("rain");
+// Hold ◀ / ▶ to keep moving.
+for (const [id, dir] of [["padLeft", "left"], ["padRight", "right"]]) {
+  let rep = null;
+  const stop = () => { clearInterval(rep); rep = null; };
+  $(id).addEventListener("pointerdown", (e) => { e.preventDefault(); gameInput(dir); stop(); rep = setInterval(() => gameInput(dir), 130); });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => $(id).addEventListener(ev, stop));
+}
 $("padShort").onclick = () => gameInput("short");
 $("padLong").onclick = () => gameInput("long");
 $("padPeek").addEventListener("pointerdown", (e) => {  // reaction game: fire on touch, not on release
@@ -476,6 +535,43 @@ $("padPeek").addEventListener("pointerdown", (e) => {  // reaction game: fire on
   e.preventDefault(); gameInput("tap");
 });
 $("hatchBtn").onclick = async () => { const r = await api("/api/new-egg"); if (!r.ok) return; toast("A fresh egg. 🥚"); refresh(); };
+
+// ---------- wardrobe & gifts ----------
+const HATS = [["none", "None", null], ["bow", "Bow tie", "hat_bow"], ["crown", "Sunglasses", "hat_crown"], ["beret", "Scarf", "hat_beret"],
+              ["party", "Heart medal", "hat_party"], ["sakura", "Sakura flower", "hat_sakura"]];
+const HOW = { bow: "first scritch", crown: "win 3 games", beret: "20 care actions", party: "15 seeds in Seed Rain", sakura: "teach it a song" };
+HATS.forEach(([key, label, icon], i) => {
+  const b = document.createElement("button");
+  b.className = "act hat";
+  b.dataset.i = i;
+  if (icon) b.append(iconCanvas(icon)); else { const c = document.createElement("canvas"); c.width = c.height = 30; b.append(c); }
+  const s = document.createElement("span"); s.textContent = label; b.append(s);
+  b.onclick = async () => {
+    if (!b.classList.contains("got")) return toast(`Locked: ${HOW[key]} 🔒`);
+    const r = await api("/api/wear", { hat: i });
+    if (r.ok) { happyChirp(); toast(i ? `Looking fabulous! ✨` : "Hat off!"); refresh(); }
+  };
+  $("hats").append(b);
+});
+function showWardrobe(s) {
+  [...$("hats").children].forEach((b) => {
+    const i = +b.dataset.i;
+    b.classList.toggle("got", i === 0 || !!(s.unlocked & (1 << i)));
+    b.classList.toggle("on", i === (s.hat || 0));
+  });
+  $("giftBtn").disabled = !s.giftReady;
+  $("giftBtn").textContent = s.giftReady ? "🎁 Open today's gift" : "🎁 Come back tomorrow for a new gift";
+  $("bestRain").textContent = s.bestRain ? `· best ${s.bestRain}` : "";
+}
+$("giftBtn").onclick = async () => {
+  ac();
+  const r = await api("/api/gift");
+  if (!r.ok) return toast("Today's gift is already open. Come back tomorrow! 🎁");
+  [0, 0.12, 0.24, 0.36].forEach((t, i) => chirp(2000 + i * 300, t, 0.12));
+  $("giftBtn").classList.add("pop"); setTimeout(() => $("giftBtn").classList.remove("pop"), 600);
+  toast(r.gift > 0 ? `A new ${HATS[r.gift][1].toLowerCase()}! Try it on below ✨` : "Yummy treats inside! 🌻 +1 food +1 joy");
+  refresh();
+};
 
 // ---------- name ----------
 $("nameBtn").onclick = async () => {
@@ -642,6 +738,7 @@ document.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
   document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", x === t));
   document.querySelectorAll(".panel").forEach((p) => p.hidden = p.id !== "tab-" + t.dataset.tab);
   $("playCard").style.display = t.dataset.tab === "care" ? "" : "none";
+  $("wardCard").style.display = t.dataset.tab === "care" ? "" : "none";
   if (t.dataset.tab === "settings") loadSettings();
   if (t.dataset.tab === "photo") drawPhoto(true);
 });

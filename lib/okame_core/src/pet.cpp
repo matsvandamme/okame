@@ -132,6 +132,8 @@ void Pet::step(uint32_t now, uint32_t dt) {
 
 Result Pet::act(Action a, uint32_t now) {
   if (s_.stage == Stage::Egg || s_.stage == Stage::Gone) return Result::Refused;
+  if (a != Action::GameWin && a != Action::GameLose && ++s_.careCount >= 20) unlock(HAT_BERET);
+  if (a == Action::Scritch) unlock(HAT_BOW);
   if (s_.lightsOff && a != Action::Light) return Result::Sleeping;
   uint16_t base = baseWeight();
   switch (a) {
@@ -195,6 +197,7 @@ bool Pet::practiceTune(uint32_t now) {
   if (s_.tuneLastPractice && now - s_.tuneLastPractice < PRACTICE_GAP) return false;
   s_.tuneLevel++;
   s_.tuneLastPractice = now;
+  if (s_.tuneLevel >= TUNE_LEARNED) unlock(HAT_SAKURA);
   if (s_.affection < 1000) s_.affection += 5;
   return true;
 }
@@ -211,4 +214,51 @@ Mood Pet::mood(uint32_t now) const {
   if (s_.hunger == 0 || s_.happy == 0) return Mood::Sad;
   if (s_.hunger >= 2 && s_.happy >= 2) return Mood::Content;
   return Mood::Meh;
+}
+
+void Pet::unlock(uint8_t a) {
+  if (a == HAT_NONE || a >= HAT_COUNT || (s_.unlocked & (1u << a))) return;
+  s_.unlocked |= 1u << a;
+  pendingUnlock_ = a;
+}
+
+int Pet::newUnlock() {
+  int u = pendingUnlock_;
+  pendingUnlock_ = -1;
+  return u;
+}
+
+bool Pet::wear(uint8_t hat) {
+  if (hat != HAT_NONE && (hat >= HAT_COUNT || !(s_.unlocked & (1u << hat)))) return false;
+  s_.hat = hat;
+  return true;
+}
+
+bool Pet::giftReady(uint32_t now) const {
+  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone) return false;
+  return s_.lastGift == 0 || now / DAY != s_.lastGift / DAY;
+}
+
+int Pet::openGift(uint32_t now, uint32_t rnd) {
+  if (!giftReady(now)) return -2;
+  s_.lastGift = now;
+  // Half the time a still-locked accessory, otherwise a treat.
+  uint8_t locked[HAT_COUNT];
+  int n = 0;
+  for (uint8_t a = 1; a < HAT_COUNT; a++)
+    if (!(s_.unlocked & (1u << a))) locked[n++] = a;
+  if (n && rnd % 2 == 0) {
+    unlock(locked[(rnd / 2) % n]);
+    return pendingUnlock_ >= 0 ? pendingUnlock_ : -1;
+  }
+  s_.happy = inc(s_.happy, MAX_STAT);
+  s_.hunger = inc(s_.hunger, MAX_STAT);
+  return -1;
+}
+
+void Pet::recordGame(bool won, int rainScore) {
+  if (won) s_.gamesWon++;
+  if (rainScore > s_.bestRain) s_.bestRain = rainScore;
+  if (s_.gamesWon >= 3) unlock(HAT_CROWN);
+  if (rainScore >= 15) unlock(HAT_PARTY);
 }

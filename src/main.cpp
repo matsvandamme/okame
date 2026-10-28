@@ -84,6 +84,8 @@ void serialCommands() {
       } else {
         Serial.println("CLOUDKEY bad length");
       }
+    } else if (line == "cloud") {
+      Serial.printf("CLOUD %s\n", cloud::status().c_str());
     } else if (line == "state") {
       app::Lock lock;
       const PetState& s = app::pet.state();

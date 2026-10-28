@@ -19,7 +19,9 @@ STATE = {
     "name": "Mochi" if "--named" in sys.argv else "", "stage": "adult", "variant": "pearl", "hunger": 3,
     "happy": 2, "poop": 1, "sick": False, "lightsOff": False, "weight": 94, "ageDays": 5, "mood": "content",
     "attention": False, "tune": "02431", "tuneLevel": 2, "night": False, "setup": SETUP,
-    "host": "okame", "fw": "0.2.0",
+    "host": "okame", "fw": "0.2.0", "hat": 5, "unlocked": (1 << 1) | (1 << 5), "giftReady": True, "bestRain": 12,
+    "msg": {"from": "Matthieu", "text": "Good morning! Don't forget your umbrella today ☔",
+            "translation": "おはよう！今日は傘を忘れないでね ☔", "at": int(time.time()) - 600} if "--note" in sys.argv else None,
     "game": {"type": "duet", "phase": "listening", "round": 1, "rounds": 3, "wins": 1, "length": 4, "entered": 2} if "--game" in sys.argv else None,
 }
 NETS = ["Home Wi-Fi", "Phone hotspot"]

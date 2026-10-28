@@ -546,7 +546,9 @@ async def safe(coro):
 
 
 def pending():
-    rows = db.execute("select * from queue where done is null order by id limit 8").fetchall()
+    # A delivered command is only sent again when the egg hasn't confirmed it after 5 minutes (it may have rebooted).
+    rows = db.execute("select * from queue where done is null and (delivered is null or delivered < ?) "
+                      "order by id limit 8", (time.time() - 300,)).fetchall()
     return [{"id": r["id"], "type": r["kind"], **json.loads(r["payload"])} for r in rows]
 
 
@@ -574,7 +576,7 @@ async def sync(request):
             pass
         cmds = pending()
     for c in cmds:
-        db.execute("update queue set delivered=coalesce(delivered,?) where id=?", (time.time(), c["id"]))
+        db.execute("update queue set delivered=? where id=?", (time.time(), c["id"]))
     return web.json_response({"commands": cmds, "now": int(time.time())})
 
 

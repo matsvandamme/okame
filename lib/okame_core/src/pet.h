@@ -43,7 +43,14 @@ struct PetState {
   char name[17];
   uint8_t tune[rules::TUNE_MAX], tuneLen, tuneLevel;
   uint32_t tuneLastPractice;
+  // Added later (older saves load with these zeroed).
+  uint8_t hat;            // 0 = none, else an Accessory
+  uint16_t unlocked;      // bit per Accessory
+  uint32_t lastGift;      // epoch of the last daily gift
+  uint16_t gamesWon, careCount, bestRain;
 };
+
+enum Accessory : uint8_t { HAT_NONE, HAT_BOW, HAT_CROWN, HAT_BERET, HAT_PARTY, HAT_SAKURA, HAT_COUNT };
 
 class Pet {
  public:
@@ -61,6 +68,13 @@ class Pet {
   void setTune(const uint8_t* notes, uint8_t len);
   bool practiceTune(uint32_t now);  // true when the bird learned a little more
 
+  // Dress-up. Accessories unlock by caring and playing; a daily gift can unlock one too.
+  bool wear(uint8_t hat);
+  bool giftReady(uint32_t now) const;
+  int openGift(uint32_t now, uint32_t rnd);  // returns the unlocked Accessory, or -1 for a treat
+  int newUnlock();                            // an accessory unlocked since the last call, or -1
+  void recordGame(bool won, int rainScore);
+
   bool isNight(uint32_t now) const;
   bool asleep(uint32_t now) const { return isNight(now) && s_.stage != Stage::Egg; }
   bool needsAttention(uint32_t now) const;
@@ -74,6 +88,8 @@ class Pet {
   void step(uint32_t now, uint32_t dt);
   void grow(uint32_t now);
   uint16_t baseWeight() const;
+  void unlock(uint8_t a);
+  int pendingUnlock_ = -1;
 
   PetState s_;
   HourFn hour_;

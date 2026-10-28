@@ -75,6 +75,29 @@ void Ui::drawBird(Pose pose, int x, int y, bool flip) {
   }
   // Bottom-align so feet stay on the floor whatever the sprite height.
   frame_.sprite(*sp, x, y - sp->h, flip, pat);
+  drawHat(pose, x, y, flip);
+}
+
+// Accessories sit on fixed spots of each life stage's sprite (facing right): bow tie, scarf and medal at the neck,
+// sunglasses over the eye, a sakura flower tucked into the feathers behind the eye. Skipped while pecking.
+void Ui::drawHat(Pose pose, int x, int y, bool flip) {
+  const PetState& s = pet_.state();
+  if (!s.hat || s.hat >= HAT_COUNT || s.stage == Stage::Egg || pose == Pose::Peck) return;
+  const Sprite* items[] = {nullptr, &spr::hat_bow, &spr::hat_crown, &spr::hat_beret, &spr::hat_party, &spr::hat_sakura};
+  const Sprite& a = *items[s.hat];
+  // Top-left of each accessory in the facing-right sprite (index = Accessory); the chick wears the bow as a hair bow.
+  static const int8_t OFF[3][6][2] = {
+      /*chick*/ {{0, 0}, {0, 0}, {3, 3}, {2, 5}, {7, 6}, {0, 0}},
+      /*juv  */ {{0, 0}, {11, 9}, {7, 4}, {6, 7}, {12, 8}, {3, 4}},
+      /*adult*/ {{0, 0}, {13, 11}, {10, 5}, {9, 8}, {15, 10}, {6, 4}},
+  };
+  int st = s.stage == Stage::Chick ? 0 : s.stage == Stage::Juvenile ? 1 : 2;
+  const Sprite* body = st == 0 ? &spr::chick_idle : st == 1 ? &spr::juv_idle : &spr::adult_idle;
+  // The flower clashes with a flattened crest.
+  if (s.hat == HAT_SAKURA && st == 2 && (pose == Pose::Flat || pose == Pose::Sleep)) return;
+  int ax = OFF[st][s.hat][0], ay = OFF[st][s.hat][1];
+  if (flip) ax = body->w - ax - a.w;
+  frame_.sprite(a, x + ax, y - body->h + ay, flip);
 }
 
 void Ui::startAnim(Anim a, uint32_t nowMs) {
@@ -151,12 +174,13 @@ void Ui::update(const Env& env) {
       break;
     case Screen::Anim:
       if (anim_ == Anim::Scritch && holding_) break;
-      if (now - t0_ > (anim_ == Anim::Hatch ? 3600u : ANIM_MS)) screen_ = forced;
+      if (now - t0_ > (anim_ == Anim::Hatch ? 3600u : anim_ == Anim::Gift ? 3400u : ANIM_MS)) screen_ = forced;
       break;
     case Screen::Duet:
       duet_.update(now);
       if (duet_.phase() == Duet::Phase::Done) {
         bool won = duet_.won();
+        pet_.recordGame(won, 0);
         pet_.act(won ? Action::GameWin : Action::GameLose, env.epoch);
         dirty_ = true;
         startAnim(won ? Anim::GameWin : Anim::GameLose, now);
@@ -166,6 +190,17 @@ void Ui::update(const Env& env) {
       peek_.update(now);
       if (peek_.phase() == Peekaboo::Phase::Done) {
         bool won = peek_.won();
+        pet_.recordGame(won, 0);
+        pet_.act(won ? Action::GameWin : Action::GameLose, env.epoch);
+        dirty_ = true;
+        startAnim(won ? Anim::GameWin : Anim::GameLose, now);
+      }
+      break;
+    case Screen::Rain:
+      rain_.update(now);
+      if (rain_.done()) {
+        bool won = rain_.score() >= 10;
+        pet_.recordGame(won, rain_.score());
         pet_.act(won ? Action::GameWin : Action::GameLose, env.epoch);
         dirty_ = true;
         startAnim(won ? Anim::GameWin : Anim::GameLose, now);
@@ -401,23 +436,22 @@ void Ui::showCode(uint16_t code, const char* title, uint32_t nowMs, uint32_t for
   showUntil_ = nowMs + forMs;
 }
 
-bool Ui::startGame(bool duet, uint32_t nowMs) {
+bool Ui::startGame(Game g, uint32_t nowMs) {
   const PetState& s = pet_.state();
   if (s.stage == Stage::Egg || s.stage == Stage::Gone || s.lightsOff) return false;
   if (screen_ != Screen::Main && screen_ != Screen::Anim && !inGame()) return false;
-  if (duet) {
-    duet_.start(rng_.next(), nowMs);
-    screen_ = Screen::Duet;
-  } else {
-    peek_.start(rng_.next(), nowMs);
-    screen_ = Screen::Peek;
+  switch (g) {
+    case Game::Duet: duet_.start(rng_.next(), nowMs); screen_ = Screen::Duet; break;
+    case Game::Peek: peek_.start(rng_.next(), nowMs); screen_ = Screen::Peek; break;
+    case Game::Rain: rain_.start(rng_.next(), nowMs, birdW()); screen_ = Screen::Rain; break;
   }
   t0_ = nowMs;
   return true;
 }
 
 void Ui::gameInput(Press p, uint32_t nowMs) {
-  if (screen_ == Screen::Duet) duet_.input(p, nowMs);
+  if (screen_ == Screen::Rain) rain_.input(p);
+  else if (screen_ == Screen::Duet) duet_.input(p, nowMs);
   else if (screen_ == Screen::Peek) peek_.input(nowMs);
 }
 
@@ -441,6 +475,7 @@ void Ui::draw(const Env& env) {
     case Screen::Message: drawMessage(env); break;
     case Screen::Picture: drawPicture(env); break;
     case Screen::Code: drawCode(env); break;
+    case Screen::Rain: drawRain(env); break;
   }
 }
 
@@ -661,6 +696,19 @@ void Ui::drawAnim(const Env& env) {
       drawBird(Pose::Flat, cx, LCD_H, false);
       frame_.sprite(spr::cloud, 1, 0);
       break;
+    case Anim::Gift:
+      if (el < 1400) {  // the present wobbles, then pops open
+        frame_.sprite(spr::gift, (LCD_W - 10) / 2 + (alt ? 1 : -1), 4, false, Pattern::Solid, 2);
+      } else {
+        drawBird(Pose::Happy, cx, LCD_H, false);
+        const Sprite* items[] = {nullptr, &spr::hat_bow, &spr::hat_crown, &spr::hat_beret, &spr::hat_party, &spr::hat_sakura};
+        if (giftItem_ > 0 && giftItem_ < HAT_COUNT && el < 2200)
+          frame_.sprite(*items[giftItem_], LCD_W - 9, 2, false, Pattern::Solid, 2);  // what was inside
+        else if (giftItem_ <= 0)
+          frame_.sprite(spr::seeds, LCD_W - 7, 4, false, Pattern::Solid, 1);
+        frame_.sprite(spr::sparkle, alt ? 1 : LCD_W - 6, 8);
+      }
+      break;
   }
   drawPoop(now);
 }
@@ -758,9 +806,9 @@ void Ui::drawMessage(const Env& env) {
     return;
   }
   char head[24];
-  snprintf(head, sizeof head, "%s", msgFrom_[0] ? msgFrom_ : "MAIL");
-  frame_.sprite(spr::mail, 0, 0);
-  frame_.text(head, 11, 1);
+  snprintf(head, 9, "%s", msgFrom_[0] ? msgFrom_ : "MAIL");  // 8 characters fit next to the envelope
+  frame_.sprite(spr::mail_s, 0, 1);
+  frame_.text(head, 7, 1);
   int w = Frame::textWidth(msgText_, 2);
   uint32_t pass = (uint32_t)(LCD_W + w) * 55;
   int x = LCD_W - (int)(((el - 1500) % pass) / 55);
@@ -778,6 +826,22 @@ void Ui::drawCode(const Env& env) {
   frame_.textCentered(codeTitle_, 1);
   snprintf(buf, sizeof buf, "%04u", code_ % 10000);
   frame_.textCentered(buf, 9, 2);
+}
+
+void Ui::drawRain(const Env& env) {
+  const SeedRain& r = rain_;
+  for (int i = 0; i < SeedRain::MAX_SEEDS; i++) {
+    const SeedRain::Seed& sd = r.seed(i);
+    if (!sd.live) continue;
+    int y = sd.y16 / 16;
+    if (sd.golden) frame_.sprite(spr::sparkle, sd.x - 2, y - 2);
+    else frame_.fillRect(sd.x, y, 2, 2);
+  }
+  drawBird(Pose::Up, r.birdX(), LCD_H, false);
+  char buf[8];
+  snprintf(buf, sizeof buf, "%d", r.score());
+  frame_.text(buf, 1, 1);
+  for (int i = 0; i < r.lives(); i++) frame_.sprite(spr::heart_s, LCD_W - 4 - i * 4, 0);
 }
 
 void Ui::drawLights(const Env& env) {

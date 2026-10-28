@@ -7,6 +7,7 @@
 #include "net.h"
 #include "ota.h"
 #include "web_assets.h"
+#include <esp_random.h>
 #include "cloud.h"
 
 namespace {
@@ -67,9 +68,18 @@ String gameJson() {
   if (ui.screen() == Screen::Duet) {
     const Duet& d = ui.duet();
     const char* ph[] = {"showing", "listening", "won", "lost", "done"};
+    // While the bird whistles, the page gets the notes so the phone can whistle along.
+    String notes;
+    if (d.phase() == Duet::Phase::Showing)
+      for (int i = 0; i < d.length(); i++) notes += d.note(i) ? 'L' : 'S';
     return String("{\"type\":\"duet\",\"phase\":\"") + ph[int(d.phase())] + "\",\"round\":" + d.round() +
            ",\"rounds\":" + Duet::ROUNDS + ",\"wins\":" + d.wins() + ",\"length\":" + d.length() +
-           ",\"entered\":" + d.entered() + "}";
+           ",\"entered\":" + d.entered() + ",\"showing\":" + d.showing() + ",\"notes\":\"" + notes + "\"}";
+  }
+  if (ui.screen() == Screen::Rain) {
+    const SeedRain& r = ui.rain();
+    return String("{\"type\":\"rain\",\"phase\":\"playing\",\"score\":") + r.score() + ",\"lives\":" + r.lives() +
+           ",\"best\":" + app::pet.state().bestRain + "}";
   }
   if (ui.screen() == Screen::Peek) {
     const Peekaboo& p = ui.peek();
@@ -113,6 +123,10 @@ String web::stateJson() {
   j += ",\"fw\":\"" FW_NAME "\"";
   j += ",\"game\":" + gameJson();
   j += ",\"msg\":" + cloud::lastMessageJson();
+  j += ",\"page\":\"" WEB_PAGE_HASH "\"";
+  j += ",\"hat\":" + String(s.hat) + ",\"unlocked\":" + String(s.unlocked);
+  j += ",\"giftReady\":" + String(app::pet.giftReady(now) ? "true" : "false");
+  j += ",\"bestRain\":" + String(s.bestRain);
   j += ",\"frame\":\"" + String(frame) + "\"}";
   return j;
 }
@@ -210,11 +224,15 @@ void handlePractice(AsyncWebServerRequest* r) {
 
 void handleGame(AsyncWebServerRequest* r) {
   String g = param(r, "g");
-  if (g != "duet" && g != "peek") return sendJson(r, 400, "{\"error\":\"unknown game\"}");
+  Ui::Game game;
+  if (g == "duet") game = Ui::Game::Duet;
+  else if (g == "peek") game = Ui::Game::Peek;
+  else if (g == "rain") game = Ui::Game::Rain;
+  else return sendJson(r, 400, "{\"error\":\"unknown game\"}");
   bool ok;
   {
     app::Lock lock;
-    ok = app::ui.startGame(g == "duet", millis());
+    ok = app::ui.startGame(game, millis());
   }
   sendJson(r, ok ? 200 : 409, ok ? "{\"ok\":true}" : "{\"error\":\"not now\"}");
 }
@@ -224,9 +242,32 @@ void handleGameInput(AsyncWebServerRequest* r) {
   {
     app::Lock lock;
     if (!app::ui.inGame()) return sendJson(r, 409, "{\"error\":\"no game\"}");
-    app::ui.gameInput(p == "long" ? Press::Long : Press::Short, millis());
+    app::ui.gameInput(p == "long" ? Press::Long : p == "left" ? Press::Left : p == "right" ? Press::Right : Press::Short, millis());
   }
   sendJson(r, 200, "{\"game\":" + [] { app::Lock lock; return gameJson(); }() + "}");
+}
+
+void handleGift(AsyncWebServerRequest* r) {
+  int got;
+  {
+    app::Lock lock;
+    got = app::pet.openGift(app::epoch(), esp_random());
+    if (got > 0) app::pet.wear(got);  // put it on straight away
+    if (got >= -1) app::ui.showGift(got, millis());
+  }
+  if (got < -1) return sendJson(r, 409, "{\"error\":\"come back tomorrow\"}");
+  app::requestSave();
+  sendJson(r, 200, String("{\"gift\":") + got + "}");
+}
+
+void handleWear(AsyncWebServerRequest* r) {
+  bool ok;
+  {
+    app::Lock lock;
+    ok = app::pet.wear(param(r, "hat").toInt());
+  }
+  if (ok) app::requestSave();
+  sendJson(r, ok ? 200 : 400, ok ? "{\"ok\":true}" : "{\"error\":\"not unlocked yet\"}");
 }
 
 void handlePair(AsyncWebServerRequest* r) {
@@ -273,6 +314,8 @@ void begin() {
   });
   server.on("/api/game-start", HTTP_POST, handleGame);
   server.on("/api/game-input", HTTP_POST, handleGameInput);
+  server.on("/api/gift", HTTP_POST, handleGift);
+  server.on("/api/wear", HTTP_POST, handleWear);
   server.on("/api/settings", HTTP_GET, handleSettings);
   server.on("/api/scan", HTTP_GET, [](AsyncWebServerRequest* r) {
     if (!authorized(r)) return denied(r);

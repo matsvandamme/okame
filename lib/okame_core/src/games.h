@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "rng.h"
 
-enum class Press : uint8_t { Short, Long };
+enum class Press : uint8_t { Short, Long, Left, Right };
 
 // Whistle duet: the bird whistles short/long notes, the player repeats them.
 class Duet {
@@ -33,6 +33,30 @@ class Duet {
   int round_ = 0, wins_ = 0, entered_ = 0, showIdx_ = -1;
   bool pattern_[6] = {}, input_[6] = {};
   uint32_t t0_ = 0;
+};
+
+// Seed Rain: seeds fall, steer the bird left/right to catch them. Golden millet is worth 3.
+class SeedRain {
+ public:
+  static constexpr int MAX_SEEDS = 4, LIVES = 3, FLOOR = 19;
+  static constexpr uint32_t MAX_MS = 45000;
+  struct Seed { int x; int y16; bool golden, live; };
+
+  void start(uint32_t seed, uint32_t now, int birdW);
+  void update(uint32_t now);
+  void input(Press p);
+  bool done() const { return done_; }
+  int score() const { return score_; }
+  int lives() const { return lives_; }
+  int birdX() const { return birdX_; }
+  const Seed& seed(int i) const { return seeds_[i]; }
+
+ private:
+  Rng rng_;
+  Seed seeds_[MAX_SEEDS] = {};
+  int birdX_ = 0, birdW_ = 10, score_ = 0, lives_ = LIVES;
+  uint32_t t0_ = 0, last_ = 0, nextSpawn_ = 0;
+  bool done_ = true;
 };
 
 // Peekaboo: the bird hides behind a branch; press while it peeks out.

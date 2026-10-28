@@ -20,12 +20,12 @@ struct Env {
 };
 
 enum class Screen : uint8_t {
-  Sleep, Setup, Main, Menu, Stats, Anim, Duet, Peek, Pair, Gone, Ota, Lights, Message, Picture, Code
+  Sleep, Setup, Main, Menu, Stats, Anim, Duet, Peek, Pair, Gone, Ota, Lights, Message, Picture, Code, Rain
 };
 
 enum class Anim : uint8_t {
   Hatch, Seed, Millet, Bath, Vet, Refused, NotNeeded, Scritch, Greet, Visitor, Whistle,
-  GameWin, GameLose, Sleeping
+  GameWin, GameLose, Sleeping, Gift
 };
 
 enum class MenuItem : uint8_t { Seed, Millet, Bath, Vet, Light, Game, Stats, Count };
@@ -52,9 +52,12 @@ class Ui {
   bool messageDone() { bool d = msgDone_; msgDone_ = false; return d; }
 
   // Games are started and played from the phone page.
-  bool startGame(bool duet, uint32_t nowMs);
+  enum class Game : uint8_t { Duet, Peek, Rain };
+  bool startGame(Game g, uint32_t nowMs);
+  bool startGame(bool duet, uint32_t nowMs) { return startGame(duet ? Game::Duet : Game::Peek, nowMs); }
+  void showGift(int unlocked, uint32_t nowMs) { giftItem_ = unlocked; startAnim(Anim::Gift, nowMs); }
   void gameInput(Press p, uint32_t nowMs);
-  bool inGame() const { return screen_ == Screen::Duet || screen_ == Screen::Peek; }
+  bool inGame() const { return screen_ == Screen::Duet || screen_ == Screen::Peek || screen_ == Screen::Rain; }
 
   // Set when the user held the button long enough to ask for a pairing code.
   bool takePairRequest() {
@@ -75,6 +78,7 @@ class Ui {
   void setMenu(MenuItem m) { menu_ = m; }
   void setStatsPage(int p) { statsPage_ = p; }
   Duet& duet() { return duet_; }
+  SeedRain& rain() { return rain_; }
   Peekaboo& peek() { return peek_; }
 
  private:
@@ -105,6 +109,8 @@ class Ui {
   void drawMessage(const Env& env);
   void drawPicture(const Env& env);
   void drawCode(const Env& env);
+  void drawRain(const Env& env);
+  void drawHat(Pose pose, int x, int y, bool flip);
   void drawPoop(uint32_t nowMs);
   void drawHearts(int n, int y);
   int birdW() const;
@@ -117,6 +123,8 @@ class Ui {
   MenuItem menu_ = MenuItem::Seed;
   Duet duet_;
   Peekaboo peek_;
+  SeedRain rain_;
+  int giftItem_ = -1;
   int statsPage_ = 0;
   uint32_t t0_ = 0, lastInput_ = 0;
 
