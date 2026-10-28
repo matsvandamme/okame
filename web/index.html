@@ -43,27 +43,24 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .jp { font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", var(--font); }
 .pill { font-size: 12px; font-weight: 800; background: var(--ink); color: var(--yellow); padding: 4px 10px; border-radius: 99px; }
 
-/* The egg-shaped handheld that frames the LCD. */
-.egg {
+/* The little screen your bird lives on, framed like a pocket handheld. */
+.device {
   position: relative;
-  background: radial-gradient(120% 90% at 30% 20%, var(--yellow-2), var(--yellow) 45%, var(--yellow-3));
-  border: 4px solid var(--ink);
-  border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%;
-  padding: 30px 24px 22px;
-  box-shadow: 0 8px 0 var(--ink), inset -10px -14px 0 rgba(0,0,0,.06);
-  margin: 0 6px 22px;
-}
-.egg .brand { text-align: center; font-weight: 900; letter-spacing: 4px; font-size: 13px; margin: -14px 0 6px; }
-.bezel {
   background: var(--ink);
-  border-radius: 16px;
-  padding: 12px;
-  box-shadow: inset 0 0 0 3px #3a3424;
+  border-radius: 26px;
+  padding: 16px 16px 12px;
+  box-shadow: 0 7px 0 var(--yellow-3);
+  margin: 0 6px 22px;
+  color: var(--yellow);
+}
+.device .brand { text-align: center; font-weight: 900; letter-spacing: 4px; font-size: 12px; margin: 10px 0 0; }
+.bezel {
+  background: #2a2618;
+  border-radius: 14px;
+  padding: 8px;
 }
 canvas.lcd { display: block; width: 100%; image-rendering: pixelated; border-radius: 4px; background: var(--lcd-bg); }
-.cheeks { display: flex; justify-content: space-between; margin: 12px 18px 0; }
-.cheeks span { width: 18px; height: 12px; border-radius: 50%; background: var(--orange); opacity: .85; }
-.status { display: flex; justify-content: center; gap: 16px; margin-top: 10px; font-weight: 800; font-size: 13px; }
+.status { display: flex; justify-content: center; gap: 16px; margin-top: 6px; font-weight: 800; font-size: 13px; }
 .hearts { letter-spacing: 1px; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; background: #8a8a8a; }
 .dot.on { background: #2fbf4a; box-shadow: 0 0 0 2px rgba(47,191,74,.25); }
@@ -140,7 +137,7 @@ ul.nets li button { font: inherit; font-size: 14px; border: 2px solid var(--ink)
 button.hat { opacity: .35; } button.hat.got { opacity: 1; } button.hat.on { background: var(--yellow); }
 .pop { animation: pop .5s ease; } @keyframes pop { 0% { transform: scale(.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 #padPeek.now { background: var(--orange); color: var(--ink); transform: scale(1.04); }
-.egg { max-width: 330px; margin: 0 auto 20px; }
+.device { max-width: 330px; margin: 0 auto 22px; }
 #moodHint { margin-top: 14px; }
 #locked .row, #unlocked .row { align-items: stretch; }
 #padPeek { touch-action: none; }
@@ -160,10 +157,9 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 
   <div class="banner" id="setupBanner" hidden>Setup mode: add your home Wi-Fi under <b>Settings</b> so your bird can wake up there.</div>
 
-  <section class="egg" aria-label="Your bird's screen">
-    <div class="brand jp">オカメ</div>
+  <section class="device" aria-label="Your bird's screen">
     <div class="bezel"><canvas class="lcd" id="lcd" width="160" height="80" role="img" aria-label="Live screen of the dongle"></canvas></div>
-    <div class="cheeks" aria-hidden="true"><span></span><span></span></div>
+    <div class="brand jp">オカメ · OKAME</div>
     <div class="status">
       <span>Food <span class="hearts" id="food">♡♡♡♡</span></span>
       <span>Joy <span class="hearts" id="joy">♡♡♡♡</span></span>
@@ -254,8 +250,8 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
   <section class="card panel" id="tab-settings" hidden>
     <h2>Settings <span class="jp">せってい</span></h2>
     <div id="locked">
-      <p class="hint">Settings are protected. Tap <b>Show code</b> and a 4-digit code appears on the egg's screen for two minutes. Type it here.</p>
-      <button class="btn wide" id="showCode">Show code on the egg</button>
+      <p class="hint">Settings are protected. Tap <b>Show code</b> and a 4-digit code appears on Okame's screen for two minutes. Type it here.</p>
+      <button class="btn wide" id="showCode">Show code on the screen</button>
       <p></p>
       <div class="row"><input inputmode="numeric" class="code" id="codeInput" maxlength="4" autocomplete="one-time-code" placeholder="····"><button class="btn dark" id="pairBtn" style="flex:0 0 auto">Unlock</button></div>
     </div>
@@ -467,7 +463,7 @@ const GAME_TEXT = {
   rain: { playing: "Catch the seeds! Golden millet is worth 3." },
   duet: { showing: "Listen… it's whistling a melody!", listening: "Your turn! Whistle it back: · short, — long.",
           won: "Perfect duet! ♥", lost: "Oops, not quite.", done: "" },
-  peek: { hidden: "It's hiding behind the tree… watch the egg!", peeking: "NOW! Tap Peek!", hit: "Found you! ♥",
+  peek: { hidden: "It's hiding behind the tree… watch the screen!", peeking: "NOW! Tap Peek!", hit: "Found you! ♥",
           miss: "Too slow (or too early).", done: "" },
 };
 let lastGame = null, lastNote = -1;
@@ -699,7 +695,7 @@ $("pairBtn").onclick = async () => {
 };
 $("showCode").onclick = async () => {
   const r = await api("/api/pair-request");
-  toast(r.ok ? "Look at the egg: the code is on its screen." : "Just a moment, then try again.");
+  toast(r.ok ? "Look at Okame: the code is on its screen." : "Just a moment, then try again.");
   $("codeInput").focus();
 };
 $("codeInput").oninput = (e) => { if (/^\d{4}$/.test(e.target.value)) $("pairBtn").click(); };

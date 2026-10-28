@@ -17,3 +17,7 @@ if env.subst("$PIOENV") == "okame":  # noqa: F821
             env.Replace(UPLOAD_PORT=p.device, MONITOR_PORT=p.device)  # noqa: F821
             print(f"okame dongle on {p.device}")
             break
+    else:
+        # Never let PlatformIO guess: other ESP32 boards share this Mac.
+        env.Replace(UPLOAD_PORT="/dev/null/okame-dongle-not-connected")  # noqa: F821
+        print("okame dongle not connected: upload will fail instead of picking another board")
