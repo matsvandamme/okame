@@ -85,8 +85,9 @@ String stateJson() {
   const PetState& s = app::pet.state();
   char frame[201];
   app::frameHex(frame);
-  String j = "{";
-  j += "\"name\":" + jsonString(s.name);
+  String j;
+  j.reserve(900);
+  j += "{\"name\":" + jsonString(s.name);
   j += ",\"stage\":\"" + String(stageName(s.stage)) + "\"";
   j += ",\"variant\":\"" + String(variantName(s.variant)) + "\"";
   j += ",\"hunger\":" + String(s.hunger) + ",\"happy\":" + String(s.happy);
@@ -148,7 +149,7 @@ void handleAct(AsyncWebServerRequest* r) {
     res = app::pet.act(act, app::epoch());
     app::ui.remoteAction(act, res, millis());
   }
-  app::requestSave();
+  if (res == Result::Ok) app::requestSave();
   sendJson(r, 200, String("{\"result\":\"") + resultName(res) + "\"}");
 }
 

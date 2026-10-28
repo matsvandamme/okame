@@ -41,6 +41,7 @@ class Peekaboo {
   enum class Phase : uint8_t { Hidden, Peeking, Hit, Miss, Done };
   static constexpr int ROUNDS = 5;
   static constexpr uint32_t RESULT_MS = 900;
+  static constexpr uint32_t GRACE_MS = 250;  // taps from the phone arrive a little late over Wi-Fi
 
   void start(uint32_t seed, uint32_t now);
   void update(uint32_t now);
@@ -57,6 +58,6 @@ class Peekaboo {
   Rng rng_;
   Phase phase_ = Phase::Done;
   int round_ = 0, hits_ = 0;
-  bool right_ = false;
+  bool right_ = false, timedOut_ = false;
   uint32_t t0_ = 0, hideMs_ = 0;
 };

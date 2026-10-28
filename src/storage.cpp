@@ -9,8 +9,11 @@ namespace storage {
 void begin() { prefs.begin("okame", false); }
 
 bool loadPet(PetState& out) {
-  if (prefs.getBytesLength("pet") != sizeof(PetState)) return false;
-  prefs.getBytes("pet", &out, sizeof out);
+  // Accept shorter blobs so an update that appends fields keeps the bird.
+  size_t len = prefs.getBytesLength("pet");
+  if (len < 2 || len > sizeof out) return false;
+  memset(&out, 0, sizeof out);
+  prefs.getBytes("pet", &out, len);
   return out.version == Pet::VERSION;
 }
 

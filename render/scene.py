@@ -222,8 +222,8 @@ def build_egg(png):
     yellow = pla("PLA yellow", (0.98, 0.62, 0.02))
     black = pla("PLA black", (0.012, 0.012, 0.012))
     parts = {
-        "egg_bottom": import_stl("egg_bottom", yellow),
-        "egg_top": import_stl("egg_top", yellow),
+        "egg_bottom": import_stl("egg_bowl", yellow),
+        "egg_top": import_stl("egg_lid", yellow),
         "place_bezel": import_stl("place_bezel", black),
     }
     # The LCD itself, a little below the bezel, tilted like the dongle.

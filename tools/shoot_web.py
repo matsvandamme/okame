@@ -13,6 +13,7 @@ prefix = sys.argv[3] if len(sys.argv) > 3 else "web"
 out.mkdir(parents=True, exist_ok=True)
 with sync_playwright() as p:
     b = p.chromium.launch(channel="chrome")
+    p.selectors.set_test_id_attribute("id")
     ctx = b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
     page = ctx.new_page()
     errors = []
@@ -26,8 +27,7 @@ with sync_playwright() as p:
         page.wait_for_timeout(700)
         if tab == "settings" and page.is_visible("#locked"):
             page.screenshot(path=str(out / f"{prefix}_{i}_settings_locked.png"), full_page=True)
-            page.fill("#codeInput", "4721")
-            page.click("#pairBtn")
+            page.fill("#codeInput", "4721")  # the page submits by itself on the 4th digit
             page.wait_for_timeout(1500)
         page.screenshot(path=str(out / f"{prefix}_{i}_{tab}.png"), full_page=True)
     print("errors:", errors or "none")

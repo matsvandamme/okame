@@ -11,7 +11,8 @@
 
 namespace {
 volatile int prog = -1;
-volatile bool running = false, wanted = false;
+volatile bool running = false, wanted = false, reboot = false, checkedOk = false;
+uint32_t retryAtMs = 0;
 char statusText[64] = "never checked";
 uint32_t lastCheckEpoch = 0;
 bool markedValid = false;
@@ -84,7 +85,10 @@ void run() {
   const char* sha = doc["sha256"] | "";
   const char* sig = doc["sig"] | "";
   const char* name = doc["name"] | "?";
-  if (version <= FW_VERSION) return setStatus("up to date");
+  if (version <= FW_VERSION) {
+    checkedOk = true;
+    return setStatus("up to date");
+  }
   String msg = String("okame:") + version + ":" + size + ":" + sha;
   if (strlen(sha) != 64 || !verifySignature(msg, sig)) return setStatus("REJECTED: bad signature");
 
@@ -131,13 +135,18 @@ void run() {
   }
   snprintf(statusText, sizeof statusText, "installed %s, restarting", name);
   prog = 100;
-  delay(1500);
-  esp_restart();
+  checkedOk = true;
+  reboot = true;  // the main loop saves the bird first
 }
 
 void task(void*) {
+  checkedOk = false;
   run();
-  prog = -1;
+  if (!checkedOk) {  // network or GitHub hiccup: try again in half an hour, not tomorrow
+    lastCheckEpoch = 0;
+    retryAtMs = millis() + 30 * 60 * 1000;
+  }
+  if (!reboot) prog = -1;
   running = false;
   vTaskDelete(nullptr);
 }
@@ -164,7 +173,8 @@ void healthy() {
 void checkNow() { wanted = true; }
 
 void loop(bool online, bool idle, uint32_t epoch) {
-  if (running || !online) return;
+  if (running || !online || reboot) return;
+  if (retryAtMs && (int32_t)(millis() - retryAtMs) < 0) return;
   bool due = millis() > OTA_FIRST_CHECK_MS && (lastCheckEpoch == 0 || epoch - lastCheckEpoch >= OTA_CHECK_EVERY_S);
   if (!(wanted || (due && idle)) || !markedValid) return;
   wanted = false;
@@ -175,6 +185,7 @@ void loop(bool online, bool idle, uint32_t epoch) {
 }
 
 int progress() { return prog; }
+bool rebootDue() { return reboot; }
 const char* status() { return statusText; }
 uint32_t lastCheck() { return lastCheckEpoch; }
 
