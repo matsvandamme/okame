@@ -33,11 +33,14 @@ order = []
 for i in range(n // 4):  # each sheet: front (outer pair), back (inner pair)
     order.append((n - 2 * i, 1 + 2 * i))
     order.append((2 + 2 * i, n - 1 - 2 * i))
+# Each spread is turned 90 degrees onto a portrait A4 page (same way on both sides), so the printer never has to
+# guess the orientation: print double-sided, flip on the SHORT edge.
 writer = PdfWriter()
 for left, right in order:
-    side = PageObject.create_blank_page(width=2 * w, height=h)
-    side.merge_transformed_page(pages[left - 1], Transformation().translate(0, 0))
-    side.merge_transformed_page(pages[right - 1], Transformation().translate(w, 0))
+    side = PageObject.create_blank_page(width=h, height=2 * w)
+    turn = Transformation().rotate(90).translate(h, 0)
+    side.merge_transformed_page(pages[left - 1], Transformation().translate(0, 0).transform(turn))
+    side.merge_transformed_page(pages[right - 1], Transformation().translate(w, 0).transform(turn))
     writer.add_page(side)
 with open(OUT / "okame-booklet-print-a4.pdf", "wb") as f:
     writer.write(f)

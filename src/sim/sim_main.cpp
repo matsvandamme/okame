@@ -219,6 +219,42 @@ int main(int argc, char** argv) {
     s.run(2600);
     s.shot("85_gone");
   }
+  {  // Hats on every stage, Seed Rain and the gift
+    Sim s;
+    const char* hats[] = {"", "bow", "crown", "beret", "party", "sakura"};
+    Stage stages[] = {Stage::Chick, Stage::Juvenile, Stage::Adult};
+    const char* sn[] = {"chick", "juv", "adult"};
+    for (int st = 0; st < 3; st++)
+      for (int h = 1; h < 6; h++) {
+        s.stage(stages[st], Variant::Pearl);
+        PetState ps = s.pet.state();
+        ps.hat = h;
+        s.pet.load(ps);
+        s.run(400);
+        char name[64];
+        snprintf(name, sizeof name, "90_hat_%s_%s", sn[st], hats[h]);
+        s.shot(name);
+      }
+    s.ui.rain().start(3, s.t, 18);
+    s.ui.forceScreen(Screen::Rain, s.t);
+    s.run(2500);
+    s.shot("91_rain");
+    {
+      PetState ps = s.pet.state();
+      ps.hat = 2;
+      s.pet.load(ps);
+    }
+    s.ui.showGift(2, s.t);
+    s.run(700);
+    s.shot("92_gift_box");
+    s.run(1200);
+    s.shot("93_gift_open");
+    s.ui.showMessage("Matthieu", "I MISS YOU \x01", s.t);
+    s.run(800);
+    s.shot("94_mail");
+    s.run(2600);
+    s.shot("95_message");
+  }
   {  // Frame sequence of the main screen for the web mock server
     Sim s;
     s.stage(Stage::Adult, Variant::Pearl);

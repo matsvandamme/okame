@@ -1,7 +1,7 @@
 """Okame product renders in Blender Cycles.
 
-usage: blender -b -P render/scene.py -- [--shots hero,front,...] [--samples N] [--scale 1.0]
-Shots: hero, front, threequarter, back, exploded, screens, turntable
+usage: blender -b -P render/scene.py -- [--shots hero,front,...] [--samples N] [--scale 1.0] [--no-cable]
+Shots: hero, cover, front, threequarter, back, exploded, screens, turntable
 Reads case/out/*.stl, case/out/layout.json and out/screens/*.png; writes render/out/.
 """
 import json
@@ -28,6 +28,7 @@ def arg(name, default):
 
 SHOTS = arg("--shots", "hero,front,threequarter,back,exploded,screens").split(",")
 SAMPLES = int(arg("--samples", "384"))
+NO_CABLE = "--no-cable" in args  # the booklet shows the egg on its own, plug free
 SCALE = float(arg("--scale", "1.0"))
 layout = json.loads((CASE / "layout.json").read_text())
 
@@ -333,6 +334,16 @@ def scene_desk(png):
     root.location = (-0.075, -0.06, 0)
     root.rotation_euler = (0, 0, math.radians(-8))
     bpy.context.view_layer.update()  # make root.matrix_world current
+    if not NO_CABLE:
+        add_cable(root, ports)
+    # Window light from the back left, soft fill from the front right.
+    area_light("window", (-0.55, 0.45, 0.6), (0.05, 0, 0.02), 1.2, 38, (1.0, 0.95, 0.88))
+    area_light("fill", (0.5, -0.6, 0.35), (0, 0, 0.02), 0.8, 8, (0.9, 0.95, 1.0))
+    area_light("rim", (0.1, 0.6, 0.25), (0, 0, 0.03), 0.3, 5)
+    return sc, root, parts, img
+
+
+def add_cable(root, ports):
     # The cable's USB-A socket plugs onto the egg's plug; the cable runs over the desk to the laptop.
     white = simple("Cable", (0.92, 0.92, 0.9), 0.45)
     tip = root.matrix_world @ (Vector(layout["plug"]["tip"]) * MM)
@@ -349,11 +360,6 @@ def scene_desk(png):
            Vector((port.x - 0.03, port.y - 0.006, floor_z)), Vector((port.x - 0.016, port.y, port.z - 0.001)),
            Vector((port.x - 0.014, port.y, port.z))], 1.6 * MM, white)
     rounded_box("usbc_plug", (14 * MM, 7.5 * MM, 4.5 * MM), 1.5 * MM, white, loc=(port.x - 7.5 * MM, port.y, port.z))
-    # Window light from the back left, soft fill from the front right.
-    area_light("window", (-0.55, 0.45, 0.6), (0.05, 0, 0.02), 1.2, 38, (1.0, 0.95, 0.88))
-    area_light("fill", (0.5, -0.6, 0.35), (0, 0, 0.02), 0.8, 8, (0.9, 0.95, 1.0))
-    area_light("rim", (0.1, 0.6, 0.25), (0, 0, 0.03), 0.3, 5)
-    return sc, root, parts, img
 
 
 def scene_studio(png):
@@ -391,16 +397,23 @@ def render(sc, cam, path, res):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    adult = SCREENS / "13_main_adult_pearl.png"
+    adult = SCREENS / (arg("--screen", "13_main_adult_pearl") + ".png")
     egg_c = (0, 0, 0.017)
 
     if "hero" in SHOTS:
         sc, root, parts, img = scene_desk(adult)
         cam = camera("hero", (-0.27, -0.37, 0.2), (0.02, 0.01, 0.03), lens=50, fstop=4.0, focus=(-0.075, -0.06, 0.02))
-        render(sc, cam, OUT / "hero_desk.png", (1920, 1080))
+        tag = "_nocable" if NO_CABLE else ""
+        render(sc, cam, OUT / f"hero_desk{tag}.png", (1920, 1080))
         cam2 = camera("hero_close", (-0.145, -0.18, 0.1), (-0.055, -0.05, 0.02), lens=70, fstop=4.0,
                       focus=(-0.075, -0.06, 0.025))
-        render(sc, cam2, OUT / "hero_close.png", (1600, 1200))
+        render(sc, cam2, OUT / f"hero_close{tag}.png", (1600, 1200))
+
+    if "cover" in SHOTS:  # booklet cover: the egg up front, her laptop soft behind it
+        sc, root, parts, img = scene_desk(adult)
+        cam = camera("cover", tuple(float(v) for v in arg("--cover-cam", "-0.2,-0.26,0.14").split(",")),
+                     tuple(float(v) for v in arg("--cover-at", "-0.045,-0.03,0.012").split(",")), lens=float(arg("--cover-lens", "62")), fstop=2.8, focus=(-0.075, -0.06, 0.025))
+        render(sc, cam, OUT / "cover.png", (1800, 1350))
 
     studio = [s for s in SHOTS if s in ("front", "threequarter", "back", "exploded", "screens", "turntable")]
     if studio:

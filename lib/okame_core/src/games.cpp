@@ -128,3 +128,54 @@ void Peekaboo::input(uint32_t now) {
   }
   t0_ = now;
 }
+
+void SeedRain::start(uint32_t seed, uint32_t now, int birdW) {
+  rng_ = Rng(seed);
+  for (auto& s : seeds_) s.live = false;
+  birdW_ = birdW;
+  birdX_ = (40 - birdW) / 2;
+  score_ = 0;
+  lives_ = LIVES;
+  t0_ = last_ = now;
+  nextSpawn_ = now + 600;
+  done_ = false;
+}
+
+void SeedRain::update(uint32_t now) {
+  if (done_) return;
+  uint32_t el = now - t0_, dt = now - last_;
+  last_ = now;
+  // Falls faster as the game goes on: from 9 to ~20 dots per second.
+  int speed16 = 16 * (9 + (int)(el / 4000)) * (int)dt / 1000;
+  if (speed16 < 1) speed16 = 1;
+  if ((int32_t)(now - nextSpawn_) >= 0) {
+    for (auto& s : seeds_)
+      if (!s.live) {
+        s = {(int)rng_.range(1, 37), -2 * 16, rng_.range(0, 99) < 15, true};
+        break;
+      }
+    nextSpawn_ = now + 1400 - (el / 60 < 700 ? el / 60 : 700);
+  }
+  for (auto& s : seeds_) {
+    if (!s.live) continue;
+    s.y16 += speed16;
+    int y = s.y16 / 16;
+    // The beak is at the top of the bird: catch when the seed reaches the bird's height over its body.
+    if (y >= FLOOR - 9 && y <= FLOOR - 7 && s.x >= birdX_ - 1 && s.x <= birdX_ + birdW_) {
+      score_ += s.golden ? 3 : 1;
+      s.live = false;
+    } else if (y > FLOOR) {
+      s.live = false;
+      if (!s.golden && --lives_ <= 0) done_ = true;
+    }
+  }
+  if (el >= MAX_MS) done_ = true;
+}
+
+void SeedRain::input(Press p) {
+  if (done_) return;
+  if (p == Press::Left) birdX_ -= 3;
+  if (p == Press::Right) birdX_ += 3;
+  if (birdX_ < 0) birdX_ = 0;
+  if (birdX_ > 40 - birdW_) birdX_ = 40 - birdW_;
+}
