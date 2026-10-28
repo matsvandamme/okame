@@ -76,6 +76,7 @@ void Peekaboo::start(uint32_t seed, uint32_t now) {
 
 void Peekaboo::beginRound(uint32_t now) {
   phase_ = Phase::Hidden;
+  timedOut_ = false;
   hideMs_ = rng_.range(1000, 3000);
   right_ = rng_.next() & 1;
   t0_ = now;
@@ -94,6 +95,7 @@ void Peekaboo::update(uint32_t now) {
     case Phase::Peeking:
       if (el >= peekMs) {
         phase_ = Phase::Miss;
+        timedOut_ = true;
         t0_ = now;
       }
       break;
@@ -112,7 +114,11 @@ void Peekaboo::update(uint32_t now) {
 }
 
 void Peekaboo::input(uint32_t now) {
-  if (phase_ == Phase::Peeking) {
+  if (phase_ == Phase::Miss && timedOut_ && now - t0_ < GRACE_MS) {
+    hits_++;  // just after the window closed: count it
+    phase_ = Phase::Hit;
+    timedOut_ = false;
+  } else if (phase_ == Phase::Peeking) {
     hits_++;
     phase_ = Phase::Hit;
   } else if (phase_ == Phase::Hidden) {

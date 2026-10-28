@@ -1,6 +1,7 @@
 // Okame: a cockatiel pocket pet for the T-Dongle-S3 clone.
 #include <Arduino.h>
 #include <esp_random.h>
+#include <esp_timer.h>
 #include <time.h>
 #include "app.h"
 #include "config.h"
@@ -31,12 +32,16 @@ uint8_t lastPacked[LCD_W * LCD_H / 8];
 Env env;
 
 uint32_t bootEpoch = 0;  // last known time at boot, used until the internet clock arrives
+bool bootReal = false;   // bootEpoch came from a real clock (saved earlier), not a placeholder
+bool clockTrusted() { return bootReal || net::timeValid(); }
 volatile bool saveWanted = false;
 uint32_t lastSave = 0, lastTick = 0, nextWhistle = 0;
 
 uint16_t pairCode = 0;
-uint32_t pairUntil = 0;
+uint32_t pairUntil = 0, pairLockUntil = 0;
 int pairTries = 0;
+
+bool before(uint32_t deadline) { return (int32_t)(millis() - deadline) < 0; }  // wrap-safe
 String sessionToken;
 uint32_t sessionUntil = 0;
 bool tuneEvent = false;
@@ -46,7 +51,7 @@ void backlight(uint8_t level) { ledcWrite(PIN_LCD_BL, level); }
 void save() {
   app::Lock lock;
   storage::savePet(app::pet.state());
-  storage::setLastEpoch(app::epoch());
+  if (clockTrusted()) storage::setLastEpoch(app::epoch());
   lastSave = millis();
   saveWanted = false;
 }
@@ -64,7 +69,9 @@ void serialCommands() {
       char hex[201];
       {
         app::Lock lock;
-        app::frameHex(hex);
+        uint8_t packed[LCD_W * LCD_H / 8];
+        app::ui.frame().pack(packed);  // unmasked: the cable is physical access
+        for (int i = 0; i < 100; i++) sprintf(hex + i * 2, "%02x", packed[i]);
       }
       Serial.printf("FRAME %s\n", hex);
     } else if (line == "state") {
@@ -81,23 +88,27 @@ void serialCommands() {
 namespace app {
 uint32_t epoch() {
   if (net::timeValid()) return time(nullptr);
-  return bootEpoch + millis() / 1000;
+  return bootEpoch + (uint32_t)(esp_timer_get_time() / 1000000);
 }
 
 void requestSave() { saveWanted = true; }
 
 void frameHex(char out[201]) {
   uint8_t packed[LCD_W * LCD_H / 8];
-  ui.frame().pack(packed);
+  Screen s = ui.screen();
+  // The page mirror must never show the settings code or the setup Wi-Fi password: those prove physical presence.
+  if (s == Screen::Pair || s == Screen::Setup) memset(packed, 0, sizeof packed);
+  else ui.frame().pack(packed);
   for (int i = 0; i < 100; i++) sprintf(out + i * 2, "%02x", packed[i]);
 }
 
-bool pairActive() { return pairCode && millis() < pairUntil && pairTries < PAIR_MAX_TRIES; }
+bool pairActive() { return pairCode && before(pairUntil) && pairTries < PAIR_MAX_TRIES; }
 
 bool requestPair() {
   Lock lock;
   static uint32_t lastAsk = 0;
   uint32_t now = millis();
+  if (pairActive() || (pairLockUntil && before(pairLockUntil))) return false;
   if (lastAsk && now - lastAsk < PAIR_REQUEST_GAP_MS) return false;
   lastAsk = now;
   pairCode = 1000 + esp_random() % 9000;
@@ -113,7 +124,7 @@ String tryPair(const String& code, int& triesLeft) {
     return "";
   }
   if (code.toInt() != pairCode || code.length() != 4) {
-    pairTries++;
+    if (++pairTries >= PAIR_MAX_TRIES) pairLockUntil = millis() + 5 * 60 * 1000;
     triesLeft = PAIR_MAX_TRIES - pairTries;
     return "";
   }
@@ -128,7 +139,7 @@ String tryPair(const String& code, int& triesLeft) {
 
 bool sessionValid(const String& token) {
   Lock lock;
-  return sessionToken.length() == 32 && token == sessionToken && millis() < sessionUntil;
+  return sessionToken.length() == 32 && token == sessionToken && before(sessionUntil);
 }
 
 void playTune() {
@@ -160,10 +171,12 @@ void setup() {
   tzset();
   storage::begin();
   bootEpoch = storage::lastEpoch();
-  if (bootEpoch < 1700000000) bootEpoch = 1700000000;
+  bootReal = bootEpoch >= 1700000000;
+  if (!bootReal) bootEpoch = 1700000000;
   PetState st;
   if (storage::loadPet(st)) app::pet.load(st);
-  else app::pet.reset(app::epoch());
+  else if (bootReal) app::pet.reset(app::epoch());
+  // else: keep the constructor's egg; it starts its clock once real time is known
   if (app::pet.state().name[0]) net::setHostname(app::pet.state().name);
 
   net::begin();
@@ -180,7 +193,11 @@ void loop() {
   {
     app::Lock lock;
     uint32_t ep = app::epoch();
-    if (now - lastTick >= 1000) {
+    if (!bootReal && net::timeValid()) {
+      bootReal = true;
+      if (app::pet.state().eggStart < 1700000000) app::pet.reset(ep);  // first real time: the egg starts now
+    }
+    if (clockTrusted() && now - lastTick >= 1000) {
       lastTick = now;
       app::pet.tick(ep);
     }
@@ -226,6 +243,11 @@ void loop() {
   if (saveWanted && now - lastSave > SAVE_MIN_GAP_MS) save();
   if (now - lastSave > SAVE_EVERY_MS) save();
   if (now > MARK_VALID_AFTER_MS) ota::healthy();
+  if (ota::rebootDue()) {
+    save();
+    delay(200);
+    esp_restart();
+  }
   {
     Screen sc = app::ui.screen();
     ota::loop(net::online(), sc == Screen::Main || sc == Screen::Sleep || sc == Screen::Lights, app::epoch());

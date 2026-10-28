@@ -9,6 +9,14 @@
 #include "config.h"
 
 namespace {
+// Guards nets/netCount/host and the shared scan results: web handlers run on another task.
+SemaphoreHandle_t mu = xSemaphoreCreateRecursiveMutex();
+struct NL {
+  NL() { xSemaphoreTakeRecursive(mu, portMAX_DELAY); }
+  ~NL() { xSemaphoreGiveRecursive(mu); }
+};
+volatile bool mdnsDirty = false;
+bool wasUp = false;
 SavedNetwork nets[MAX_NETWORKS];
 int netCount = 0;
 DNSServer dns;
@@ -21,6 +29,7 @@ int tryIdx = 0;
 // Visitor scan state.
 std::map<uint64_t, uint32_t> seen;  // MAC -> last seen (millis / 1000)
 uint32_t nextScan = 0, scanHost = 1, sweeps = 0;
+bool sweeping = true;
 bool visitorFlag = false;
 
 void startAp() {
@@ -42,13 +51,20 @@ void stopAp() {
 
 // Try saved networks one at a time, strongest first after a scan.
 void connectNext() {
+  char ssid[33], pass[65];
+  {
+  NL l;
   if (!netCount) return;
   int n = WiFi.scanComplete();
   if (n == WIFI_SCAN_FAILED) {
     WiFi.scanNetworks(true);
+    nextConnect = millis() + 1000;
     return;
   }
-  if (n == WIFI_SCAN_RUNNING) return;
+  if (n == WIFI_SCAN_RUNNING) {
+    nextConnect = millis() + 1000;
+    return;
+  }
   int best = -1, bestRssi = -1000;
   for (int i = 0; i < n; i++)
     for (int k = 0; k < netCount; k++)
@@ -58,13 +74,21 @@ void connectNext() {
       }
   WiFi.scanDelete();
   if (best < 0) best = tryIdx++ % netCount;  // hidden networks: just try in turn
-  log_i("joining %s", nets[best].ssid);
-  WiFi.begin(nets[best].ssid, nets[best].pass);
+  strlcpy(ssid, nets[best].ssid, sizeof ssid);
+  strlcpy(pass, nets[best].pass, sizeof pass);
+  }
+  log_i("joining %s", ssid);
+  WiFi.begin(ssid, pass);
 }
 
 void startMdns() {
+  String h;
+  {
+    NL l;
+    h = host;
+  }
   MDNS.end();
-  if (MDNS.begin(host.c_str())) MDNS.addService("http", "tcp", 80);
+  if (MDNS.begin(h.c_str())) MDNS.addService("http", "tcp", 80);
 }
 
 uint64_t macKey(const eth_addr* e) {
@@ -99,6 +123,9 @@ void scanStep() {
     if (scanHost > 254) {
       scanHost = 1;
       sweeps++;
+      sweeping = false;  // pause until the next sweep
+      for (auto it = seen.begin(); it != seen.end();)
+        it = (nowS - it->second > 3 * 24 * 3600) ? seen.erase(it) : std::next(it);
       break;
     }
     ip4_addr_t target;
@@ -120,6 +147,7 @@ void begin() {
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);  // USB powered; modem sleep makes .local lookups and the page flaky
   WiFi.setHostname(host.c_str());
   configTzTime(OKAME_TZ, "pool.ntp.org", "time.google.com");
   lostSince = millis();
@@ -131,6 +159,7 @@ void loop() {
   bool up = WiFi.status() == WL_CONNECTED;
   if (up != staUp) {
     staUp = up;
+    if (up) wasUp = true;
     if (up) {
       log_i("online %s", WiFi.localIP().toString().c_str());
       stopAp();
@@ -141,20 +170,30 @@ void loop() {
     }
   }
   if (!up) {
-    if (now >= nextConnect && !ap) {
-      nextConnect = now + 15000;
-      connectNext();
-    } else if (ap && now >= nextConnect) {
-      // Keep trying saved networks occasionally even while the setup Wi-Fi is up.
-      nextConnect = now + 30000;
+    bool grace = wasUp && now - lostSince < 20000;        // let the stack's own reconnect work first
+    bool phoneOnAp = ap && WiFi.softAPgetStationNum() > 0;  // don't hop channels under a phone mid-setup
+    if (!grace && !phoneOnAp && (int32_t)(now - nextConnect) >= 0) {
+      nextConnect = now + (ap ? 30000 : 15000);
       connectNext();
     }
-    if (!ap && now - lostSince > AP_AFTER_MS) startAp();
+    int saved;
+    {
+      NL l;
+      saved = netCount;
+    }
+    if (!ap && now - lostSince > (saved ? 5 * 60 * 1000u : AP_AFTER_MS)) startAp();
+  }
+  if (mdnsDirty && up) {
+    mdnsDirty = false;
+    startMdns();
   }
   if (ap) dns.processNextRequest();
-  if (up && now >= nextScan) {
-    nextScan = now + 400;
+  if (up && (int32_t)(now - nextScan) >= 0) {
+    if (!sweeping) {
+      sweeping = true;  // a sweep takes ~20 s, then rests 5 minutes
+    }
     scanStep();
+    nextScan = now + (sweeping ? 400 : 5 * 60 * 1000);
   }
 }
 
@@ -163,7 +202,10 @@ bool apActive() { return ap; }
 const char* apSsid() { return ssidAp; }
 const char* apPass() { return passAp; }
 bool timeValid() { return time(nullptr) > 1700000000; }
-String hostname() { return host; }
+String hostname() {
+  NL l;
+  return host;
+}
 
 void setHostname(const String& petName) {
   String h;
@@ -173,17 +215,20 @@ void setHostname(const String& petName) {
   }
   while (h.endsWith("-")) h.remove(h.length() - 1);
   if (h.isEmpty()) h = "okame";
+  NL l;
   if (h == host) return;
   host = h;
-  if (staUp) startMdns();
+  mdnsDirty = true;  // restarted from the main loop, not from a web handler
 }
 
 int networks(SavedNetwork* out) {
+  NL l;
   memcpy(out, nets, sizeof(SavedNetwork) * netCount);
   return netCount;
 }
 
 bool addNetwork(const char* ssid, const char* pass) {
+  NL l;
   if (!*ssid || strlen(ssid) > 32 || strlen(pass) > 64) return false;
   int idx = -1;
   for (int i = 0; i < netCount; i++)
@@ -200,6 +245,7 @@ bool addNetwork(const char* ssid, const char* pass) {
 }
 
 bool removeNetwork(const char* ssid) {
+  NL l;
   for (int i = 0; i < netCount; i++)
     if (!strcmp(nets[i].ssid, ssid)) {
       nets[i] = nets[--netCount];
@@ -210,18 +256,25 @@ bool removeNetwork(const char* ssid) {
 }
 
 String scanJson() {
+  NL l;
   int n = WiFi.scanComplete();
   if (n < 0) {
     if (n == WIFI_SCAN_FAILED) WiFi.scanNetworks(true);
     return "null";
   }
   String out = "[";
+  bool first = true;
   for (int i = 0; i < n; i++) {
-    if (i) out += ',';
-    String s = WiFi.SSID(i);
-    s.replace("\\", "\\\\");
-    s.replace("\"", "\\\"");
-    out += "{\"ssid\":\"" + s + "\",\"rssi\":" + String(WiFi.RSSI(i)) + "}";
+    String e;
+    for (uint8_t c : WiFi.SSID(i)) {
+      if (c == '"' || c == '\\') e += '\\', e += (char)c;
+      else if (c < 0x20) e += ' ';
+      else e += (char)c;
+    }
+    if (e.isEmpty()) continue;  // hidden networks
+    if (!first) out += ',';
+    first = false;
+    out += "{\"ssid\":\"" + e + "\",\"rssi\":" + String(WiFi.RSSI(i)) + "}";
   }
   out += "]";
   WiFi.scanDelete();

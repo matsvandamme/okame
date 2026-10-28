@@ -14,7 +14,7 @@
 #define OKAME_IMAGE_URL "https://github.com/" OKAME_REPO "/releases/latest/download/okame.bin"
 
 constexpr uint32_t AP_AFTER_MS = 60 * 1000;           // no saved network for this long -> setup Wi-Fi
-constexpr uint32_t SAVE_EVERY_MS = 5 * 60 * 1000;
+constexpr uint32_t SAVE_EVERY_MS = 30 * 60 * 1000;  // state recomputes from lastTick; this mostly keeps the clock
 constexpr uint32_t SAVE_MIN_GAP_MS = 10 * 1000;
 constexpr uint32_t PAIR_VALID_MS = 2 * 60 * 1000;
 constexpr uint32_t PAIR_REQUEST_GAP_MS = 10 * 1000;   // stops a page from spamming the LCD with codes

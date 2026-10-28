@@ -12,6 +12,7 @@ void checkNow();
 int progress();          // -1 when not installing, else 0..100
 const char* status();    // human-readable last result
 uint32_t lastCheck();
+bool rebootDue();        // an update is installed; the main loop saves and restarts
 // After a new image boots: mark it good once it has run for a while.
 void healthy();
 }  // namespace ota
