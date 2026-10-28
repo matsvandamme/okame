@@ -489,6 +489,14 @@ async def pairing(chat, name, lang, text):
             return await say(chat, "Too many wrong codes 🙈 Send /start for a new one.")
         db.execute("update pairing set tries=? where chat_id=?", (tries, chat))
         return await say(chat, "That's not the code on my screen 🤔 Try again?")
+    # A one-time invite link (t.me/<bot>?start=<token>) skips the screen code: an admin puts {"token", "until"} in kv "invite".
+    inv = kv_get("invite", {})
+    if inv and time.time() < inv["until"] and hmac.compare_digest(text.encode(), f"/start {inv['token']}".encode()):
+        kv_set("invite", {})
+        db.execute("insert or replace into users values(?,?,?,?)", (chat, name, lang, time.time()))
+        enqueue("pairdone", {}, chat)
+        event(name, "became my friend on Telegram")
+        return await show(chat, f"🎉 We're friends now, {esc(name)}! ピヨピヨ\n\n" + HELP)
     if len(users()) >= 6:
         return await say(chat, "ピヨ? I only talk to my family 🐦")
     last = kv_get(f"pairask:{chat}", 0)
