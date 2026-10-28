@@ -85,13 +85,13 @@ class H(BaseHTTPRequestHandler):
             return self.send(403, {"error": "wrong code", "triesLeft": 4})
         if self.path in ("/api/tune", "/api/networks/add", "/api/networks/remove", "/api/new-egg", "/api/ota/check"):
             return self.send(200, {"ok": True})
-        if self.path == "/api/game":
+        if self.path == "/api/game-start":
             STATE["game"] = {"type": q.get("g"), "phase": "listening" if q.get("g") == "duet" else "hidden",
                              "round": 0, "rounds": 3 if q.get("g") == "duet" else 5, "wins": 0, "hits": 0}
             return self.send(200, {"ok": True})
-        if self.path == "/api/game/input":
+        if self.path == "/api/game-input":
             return self.send(200, {"game": STATE.get("game")})
-        if self.path == "/api/pair/request":
+        if self.path == "/api/pair-request":
             return self.send(200, {"ok": True})
         if self.path == "/api/practice":
             return self.send(200, {"learned": True, "level": 3})

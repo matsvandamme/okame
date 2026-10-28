@@ -20,7 +20,7 @@ struct Env {
 };
 
 enum class Screen : uint8_t {
-  Sleep, Setup, Main, Menu, Stats, Anim, Duet, Peek, Pair, Gone, Ota, Lights
+  Sleep, Setup, Main, Menu, Stats, Anim, Duet, Peek, Pair, Gone, Ota, Lights, Message, Picture, Code
 };
 
 enum class Anim : uint8_t {
@@ -43,6 +43,13 @@ class Ui {
   void whistle(uint32_t nowMs) { startAnim(Anim::Whistle, nowMs); }
   // An action done from the phone page: play its animation.
   void remoteAction(Action a, Result r, uint32_t nowMs);
+
+  // From Telegram (via the relay).
+  void showMessage(const char* from, const char* text, uint32_t nowMs);
+  void showPicture(const uint8_t* frames, int count, uint16_t frameMs, uint16_t secs, uint32_t nowMs);
+  void showCode(uint16_t code, const char* title, uint32_t nowMs, uint32_t forMs);
+  bool busyShowing() const { return screen_ == Screen::Message || screen_ == Screen::Picture || screen_ == Screen::Code; }
+  bool messageDone() { bool d = msgDone_; msgDone_ = false; return d; }
 
   // Games are started and played from the phone page.
   bool startGame(bool duet, uint32_t nowMs);
@@ -95,6 +102,9 @@ class Ui {
   void drawGone(const Env& env);
   void drawOta(const Env& env);
   void drawLights(const Env& env);
+  void drawMessage(const Env& env);
+  void drawPicture(const Env& env);
+  void drawCode(const Env& env);
   void drawPoop(uint32_t nowMs);
   void drawHearts(int n, int y);
   int birdW() const;
@@ -118,6 +128,15 @@ class Ui {
   int birdX_ = 12;
   bool facingLeft_ = false, hop_ = false;
   uint32_t nextMove_ = 0, blinkUntil_ = 0;
+
+  // Telegram content.
+  static constexpr int MAX_PIC_FRAMES = 8;
+  char msgFrom_[17] = "", msgText_[128] = "", codeTitle_[12] = "";
+  uint8_t pic_[MAX_PIC_FRAMES][LCD_W * LCD_H / 8];
+  int picCount_ = 0;
+  uint16_t picMs_ = 300, picSecs_ = 8, code_ = 0;
+  uint32_t showUntil_ = 0;
+  bool msgDone_ = false;
 
   Stage lastStage_ = Stage::Egg;
   bool lastOnline_ = false, pairRequest_ = false, dirty_ = false, started_ = false;

@@ -156,3 +156,12 @@
 
 @ dot
 #
+
+@ mail
+#########
+##ooooo##
+#o#ooo#o#
+#oo#o#oo#
+#ooo#ooo#
+#ooooooo#
+#########
