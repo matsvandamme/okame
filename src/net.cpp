@@ -2,6 +2,7 @@
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
+#include <esp_mac.h>
 #include <esp_sntp.h>
 #include <lwip/etharp.h>
 #include <lwip/tcpip.h>
@@ -140,7 +141,7 @@ namespace net {
 
 void begin() {
   uint8_t mac[6];
-  WiFi.macAddress(mac);
+  esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);  // from eFuse: WiFi.macAddress() is all zeros before WiFi starts
   snprintf(ssidAp, sizeof ssidAp, "OKAME-%03X", ((mac[4] << 8) | mac[5]) & 0xFFF);
   strlcpy(passAp, storage::apPassword().c_str(), sizeof passAp);
   netCount = storage::loadNetworks(nets, MAX_NETWORKS);
