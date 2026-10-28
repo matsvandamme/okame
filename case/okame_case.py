@@ -216,8 +216,10 @@ button = (cq.Workplane("XY").circle(button_d / 2).extrude(cap_h).faces(">Z").edg
           .union(cq.Workplane("XY").circle(button_d / 2 + 1.6).extrude(-button_flange))
           .union(cq.Workplane("XY").circle(2.0).extrude(-(facet_gap - 0.3))))
 
-# Fit test: the top band of the bowl (seats, back stop, plug notch) - prints in minutes.
-fit_test = bowl.intersect(halfspace_below(-wall).cut(halfspace_below(dongle_mid_z - dongle_t)))
+# Fit test: the bowl's top band cut flat 3 mm below the board, so it sits on the bed (seats, back stop, plug notch).
+board_low = dongle_env.val().BoundingBox().zmin
+fit_test = bowl.cut(cq.Workplane("XY").box(400, 400, board_low - 3, centered=(True, True, False))) \
+    .translate((0, 0, -(board_low - 3)))
 
 # Report anything poking out of the shell.
 for nm, env in (("dongle", dongle_env),):

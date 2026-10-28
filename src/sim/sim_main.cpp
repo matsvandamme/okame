@@ -192,6 +192,12 @@ int main(int argc, char** argv) {
     s.env.online = false;
     s.run(1000);
     s.shot("80_sleep_offline");
+    {
+      Sim e;  // a fresh egg, sleeping before it ever saw Wi-Fi
+      e.env.online = false;
+      e.run(1000);
+      e.shot("80b_sleep_egg");
+    }
     s.env.apMode = true;
     s.t = (s.t / 6000 + 1) * 6000;
     s.run(300);

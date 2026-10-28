@@ -57,3 +57,15 @@ with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
     z.writestr("3D/3dmodel.model", model)
     z.writestr("Metadata/model_settings.config", settings)
 print(path, path.stat().st_size // 1024, "KB")
+
+# Fit-test job: the flat-bottomed top band of the bowl + the real lid and inlay (~15 minutes).
+band = trimesh.load(OUT / "fit_test.stl")
+band.apply_translation([70 - band.bounds.mean(axis=0)[0], 128 - band.bounds.mean(axis=0)[1], -band.bounds[0][2]])
+model2 = model.replace(mesh_xml(1, bowl), mesh_xml(1, band))
+path2 = OUT / "okame_fit_test.3mf"
+with zipfile.ZipFile(path2, "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("[Content_Types].xml", types)
+    z.writestr("_rels/.rels", rels)
+    z.writestr("3D/3dmodel.model", model2)
+    z.writestr("Metadata/model_settings.config", settings.replace("Okame bowl (yellow)", "Fit test band (yellow)"))
+print(path2, path2.stat().st_size // 1024, "KB")

@@ -131,6 +131,10 @@ ul.nets li button { font: inherit; font-size: 14px; border: 2px solid var(--ink)
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
 .pad { font-size: 20px; padding: 22px 10px; }
 #padPeek.now { background: var(--orange); color: var(--ink); transform: scale(1.04); }
+.egg { max-width: 330px; margin: 0 auto 20px; }
+#moodHint { margin-top: 14px; }
+#locked .row, #unlocked .row { align-items: stretch; }
+#padPeek { touch-action: none; }
 .lcd.mini { max-width: 300px; margin: 0 auto 10px; border: 6px solid var(--ink); border-radius: 10px; }
 #gamePick { align-items: stretch; } #gamePick .btn { white-space: nowrap; font-size: 16px; }
 .notes { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } .notes button { padding: 0; }
@@ -159,7 +163,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 
   <section class="card" id="nameCard" hidden>
     <h2>Name your bird <span class="jp">なまえ</span></h2>
-    <p class="hint">Your chick has hatched! Give it a name (up to 16 letters). It also becomes this page's address.</p>
+    <p class="hint">Your chick has hatched! What would you like to call it?</p>
     <div class="row"><input type="text" id="nameInput" maxlength="16" autocomplete="off" placeholder="e.g. Mochi"><button class="btn dark" id="nameBtn" style="flex:0 0 auto">Save</button></div>
   </section>
 
@@ -179,6 +183,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 
   <section class="card panel-care" id="playCard">
     <h2>Play <span class="jp">あそぶ</span></h2>
+    <p class="hint" id="playHint">Duet: copy the bird's short and long whistles. Peekaboo: tap Peek! the moment it pops out.</p>
     <div id="gamePick" class="row">
       <button class="btn" id="startDuet">🎵 Whistle duet</button>
       <button class="btn" id="startPeek">🌳 Peekaboo</button>
@@ -202,14 +207,14 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="row">
       <button class="btn" id="playTune">▶ Play</button>
       <button class="btn" id="clearTune">Clear</button>
-      <button class="btn dark" id="teachTune">Teach new tune</button>
     </div>
+    <button class="btn dark wide" id="teachTune" style="margin-top:10px">Teach this new tune</button>
     <label>Learning <span id="levelTxt" style="opacity:.6"></span></label>
     <div class="row" style="justify-content:space-between">
       <div class="level" id="level"><b></b><b></b><b></b></div>
       <button class="btn dark" id="practice" style="flex:0 0 auto">Practise together</button>
     </div>
-    <label class="row" style="margin-top:14px"><span>Chirps on this phone</span><input type="checkbox" id="sound" checked style="flex:0 0 auto;width:22px;height:22px"></label>
+    <label class="row" style="margin-top:14px"><span>Chirps on this phone<br><small style="font-weight:600;opacity:.6">Turn off Silent mode to hear them</small></span><input type="checkbox" id="sound" checked style="flex:0 0 auto;width:22px;height:22px"></label>
   </section>
 
   <section class="card panel" id="tab-photo" hidden>
@@ -280,8 +285,7 @@ function showFrame(hex) {
   frameHex = hex;
   drawLcd(lcd, hex);
   if (!$("gameLive").hidden) drawLcd($("lcdMini").getContext("2d"), hex);
-  drawPhoto();
-}
+}  // the photo is a snapshot: taken when the tab opens or on "New picture"
 
 function iconCanvas(name) {
   const c = document.createElement("canvas");
@@ -376,6 +380,7 @@ function applyState(s) {
   [...$("level").children].forEach((b, i) => b.classList.toggle("on", i < s.tuneLevel));
   if (!tuneSeeded && s.tune) { tuneSeeded = true; tune = [...s.tune].map(Number); renderStaff(); }
   $("levelTxt").textContent = s.tune ? `${s.tuneLevel}/3 days` : "";
+  syncTeach();
 }
 async function refresh() {
   const s = await api("/api/state", null, true);
@@ -418,11 +423,15 @@ const GAME_TEXT = {
 };
 let lastGame = null;
 function showGame(g) {
+  const starting = g && !lastGame;
   if (!g && lastGame) toast(lastGame.type === "duet" ? `Duet over: ${lastGame.wins}/${lastGame.rounds} rounds ♥` : `Found it ${lastGame.hits}/${lastGame.rounds} times ♥`);
   lastGame = g;
   $("gamePick").hidden = !!g;
   $("gameLive").hidden = !g;
+  $("playHint").hidden = !!g;
   if (!g) return;
+  if (frameHex) drawLcd($("lcdMini").getContext("2d"), frameHex);
+  if (starting && !$("tab-care").hidden) requestAnimationFrame(() => $("playCard").scrollIntoView({ behavior: "smooth", block: "end" }));
   const score = g.type === "duet" ? `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · wins ${g.wins}` : `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · found ${g.hits}`;
   const prog = (g.type === "duet" && g.phase === "listening" && g.length != null) ? "  " + "●".repeat(g.entered) + "○".repeat(Math.max(0, g.length - g.entered)) : "";
   $("gameHint").textContent = `${GAME_TEXT[g.type][g.phase] || ""}${prog}  ${score}`;
@@ -437,7 +446,6 @@ async function startGame(g) {
   const r = await api("/api/game", { g });
   if (!r.ok) return toast("Not now: it's asleep, busy or still an egg.");
   pollGame();
-  setTimeout(() => $("playCard").scrollIntoView({ behavior: "smooth", block: "end" }), 300);
 }
 let gamePoll = null;
 function pollGame() {
@@ -456,23 +464,20 @@ async function gameInput(p) {
 }
 $("startDuet").onclick = () => startGame("duet");
 $("startPeek").onclick = () => startGame("peek");
-[["padShort", "short"], ["padLong", "long"], ["padPeek", "tap"]].forEach(([id, p]) =>
-  $(id).addEventListener("pointerdown", (e) => { e.preventDefault(); gameInput(p); }));
-$("hatchBtn").onclick = async () => { await api("/api/new-egg"); toast("A fresh egg. 🥚"); refresh(); };
-
-function moveTo(host) {
-  if (location.hostname.endsWith(".local") && location.hostname !== host + ".local") {
-    toast(`New address: ${host}.local. Moving there…`);
-    setTimeout(() => location.replace(`http://${host}.local/`), 1800);
-  }
-}
+$("padShort").onclick = () => gameInput("short");
+$("padLong").onclick = () => gameInput("long");
+$("padPeek").addEventListener("pointerdown", (e) => {  // reaction game: fire on touch, not on release
+  if (e.currentTarget.disabled || !e.isPrimary) return;
+  e.preventDefault(); gameInput("tap");
+});
+$("hatchBtn").onclick = async () => { const r = await api("/api/new-egg"); if (!r.ok) return; toast("A fresh egg. 🥚"); refresh(); };
 
 // ---------- name ----------
 $("nameBtn").onclick = async () => {
   const n = $("nameInput").value.trim();
   if (!n) return toast("Type a name first.");
   const r = await api("/api/name", { name: n });
-  if (r.ok) { toast(`Hello, ${n}! Your bird's page is now ${r.host}.local`); happyChirp(); moveTo(r.host); }
+  if (r.ok) { toast(`Hello, ${n}! ♥`); happyChirp(); }
   else toast(r.error || "Couldn't save the name.");
   refresh();
 };
@@ -486,11 +491,17 @@ for (let n = 0; n < 5; n++) {
   b.onclick = () => { if (tune.length >= 8) return toast("8 notes max."); tune.push(n); chirp(PITCH[n], 0, 0.22, 1.05); renderStaff(); };
   $("noteButtons").append(b);
 }
+function syncTeach() {
+  const same = !!state && tune.length && tune.join("") === state.tune;
+  $("teachTune").disabled = !tune.length || same;
+  $("teachTune").textContent = same ? "Already learning this tune" : "Teach this new tune";
+}
 function renderStaff() {
   const st = $("staff");
   st.replaceChildren();
   if (!tune.length) { const e = document.createElement("em"); e.textContent = "no notes yet"; st.append(e); return; }
   tune.forEach((n) => { const i = document.createElement("i"); i.style.height = 10 + n * 7 + "px"; st.append(i); });
+  syncTeach();
 }
 $("playTune").onclick = () => tune.length ? playNotes(tune) : toast("Tap some notes first.");
 $("clearTune").onclick = () => { tune = []; renderStaff(); };
@@ -580,7 +591,10 @@ $("scan").onchange = () => { if ($("scan").value) $("ssid").value = $("scan").va
 $("pairBtn").onclick = async () => {
   const r = await api("/api/pair", { code: $("codeInput").value.trim() });
   if (r.token) { token = r.token; sessionStorage.setItem("okame-token", token); toast("Unlocked for 30 minutes."); loadSettings(); }
-  else toast(r.triesLeft ? `Wrong code. ${r.triesLeft} tries left.` : "No valid code. Tap Show code for a new one.");
+  else {
+    toast(r.triesLeft ? `Wrong code. ${r.triesLeft} tries left.` : "No valid code. Tap Show code for a new one.");
+    $("codeInput").value = ""; $("codeInput").focus();
+  }
 };
 $("showCode").onclick = async () => {
   const r = await api("/api/pair/request");
@@ -600,11 +614,10 @@ $("addNet").onclick = async () => {
 };
 $("renameBtn").onclick = async () => {
   const r = await api("/api/name", { name: $("rename").value.trim() });
-  toast(r.ok ? `Renamed. New address: ${r.host}.local` : (r.error || "Couldn't rename."));
-  if (r.ok) moveTo(r.host);
+  toast(r.ok ? "Renamed! ♥" : (r.error || "Couldn't rename."));
   refresh();
 };
-$("otaBtn").onclick = async () => { await api("/api/ota/check"); toast("Checking for new feathers…"); setTimeout(loadSettings, 8000); };
+$("otaBtn").onclick = async () => { const r = await api("/api/ota/check"); if (!r.ok) return; toast("Checking for new feathers…"); setTimeout(loadSettings, 8000); };
 let eggArmed = 0;
 $("newEgg").onclick = async () => {
   if (Date.now() - eggArmed > 4000) {
@@ -613,7 +626,8 @@ $("newEgg").onclick = async () => {
     return;
   }
   $("newEgg").textContent = "New egg…";
-  await api("/api/new-egg");
+  const r = await api("/api/new-egg");
+  if (!r.ok) return;
   toast("A fresh egg. 🥚");
   refresh();
 };
@@ -642,7 +656,6 @@ function connectEvents() {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { if (es) es.close(); } else { connectEvents(); refresh(); }
 });
-if (navigator.audioSession) navigator.audioSession.type = "playback";  // play even with the ring switch off
 ["touchend", "click"].forEach((ev) => document.addEventListener(ev, () => ac(), { once: true }));
 refresh().then(() => { if (state && state.setup) document.querySelector('[data-tab="settings"]').click(); });
 connectEvents();

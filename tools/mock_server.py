@@ -19,8 +19,8 @@ STATE = {
     "name": "Mochi" if "--named" in sys.argv else "", "stage": "adult", "variant": "pearl", "hunger": 3,
     "happy": 2, "poop": 1, "sick": False, "lightsOff": False, "weight": 94, "ageDays": 5, "mood": "content",
     "attention": False, "tune": "02431", "tuneLevel": 2, "night": False, "setup": SETUP,
-    "host": "mochi" if "--named" in sys.argv else "okame", "fw": "0.1.0",
-    "game": {"type": "duet", "phase": "listening", "round": 1, "rounds": 3, "wins": 1} if "--game" in sys.argv else None,
+    "host": "okame", "fw": "0.2.0",
+    "game": {"type": "duet", "phase": "listening", "round": 1, "rounds": 3, "wins": 1, "length": 4, "entered": 2} if "--game" in sys.argv else None,
 }
 NETS = ["Home Wi-Fi", "Phone hotspot"]
 TOKEN = "f" * 32
@@ -77,7 +77,7 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"result": "ok"})
         if self.path == "/api/name":
             STATE["name"] = q.get("name", "")
-            STATE["host"] = STATE["name"].lower()
+
             return self.send(200, {"host": STATE["host"]})
         if self.path == "/api/pair":
             if q.get("code") == "4721":

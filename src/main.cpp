@@ -177,7 +177,6 @@ void setup() {
   if (storage::loadPet(st)) app::pet.load(st);
   else if (bootReal) app::pet.reset(app::epoch());
   // else: keep the constructor's egg; it starts its clock once real time is known
-  if (app::pet.state().name[0]) net::setHostname(app::pet.state().name);
 
   net::begin();
   web::begin();

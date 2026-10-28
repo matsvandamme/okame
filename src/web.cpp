@@ -165,8 +165,7 @@ void handleName(AsyncWebServerRequest* r) {
     if (app::pet.state().name[0] && !authorized(r)) return denied(r);
     app::pet.setName(n.c_str());
   }
-  net::setHostname(n);
-  app::requestSave();
+  app::requestSave();  // the page stays at okame.local (printed as a QR code in the booklet)
   sendJson(r, 200, "{\"host\":" + jsonString(net::hostname().c_str()) + "}");
 }
 
