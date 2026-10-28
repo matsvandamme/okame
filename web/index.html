@@ -214,7 +214,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
       <div class="level" id="level"><b></b><b></b><b></b></div>
       <button class="btn dark" id="practice" style="flex:0 0 auto">Practise together</button>
     </div>
-    <label class="row" style="margin-top:14px"><span>Chirps on this phone<br><small style="font-weight:600;opacity:.6">Turn off Silent mode to hear them</small></span><input type="checkbox" id="sound" checked style="flex:0 0 auto;width:22px;height:22px"></label>
+    <label class="row" style="margin-top:14px"><span>Chirps on this phone<br><small style="font-weight:600;opacity:.6">Turn the volume up a little to hear them</small></span><input type="checkbox" id="sound" checked style="flex:0 0 auto;width:22px;height:22px"></label>
   </section>
 
   <section class="card panel" id="tab-photo" hidden>
@@ -302,7 +302,12 @@ let audio = null;
 const PITCH = [1500, 1800, 2150, 2550, 3000];
 function ac() {
   if (!$("sound").checked) return null;
-  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (!audio) {
+    // iPhones mute web audio with the ring/silent switch unless the page asks for "playback".
+    // Asked only once she's tapped the page, so it never interrupts music by itself.
+    if (navigator.audioSession) navigator.audioSession.type = "playback";
+    try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+  }
   if (audio.state !== "running") audio.resume();
   return audio;
 }
@@ -443,7 +448,7 @@ function showGame(g) {
 }
 async function startGame(g) {
   ac();
-  const r = await api("/api/game", { g });
+  const r = await api("/api/game-start", { g });
   if (!r.ok) return toast("Not now: it's asleep, busy or still an egg.");
   pollGame();
 }
@@ -459,7 +464,7 @@ function pollGame() {
 }
 async function gameInput(p) {
   if (p === "short") chirp(2400, 0, 0.1); else if (p === "long") chirp(2000, 0, 0.35, 1.25); else chirp(2800, 0, 0.08);
-  const r = await api("/api/game/input", { p });
+  const r = await api("/api/game-input", { p });
   if (r.game) showGame(r.game);
 }
 $("startDuet").onclick = () => startGame("duet");
@@ -597,7 +602,7 @@ $("pairBtn").onclick = async () => {
   }
 };
 $("showCode").onclick = async () => {
-  const r = await api("/api/pair/request");
+  const r = await api("/api/pair-request");
   toast(r.ok ? "Look at the egg: the code is on its screen." : "Just a moment, then try again.");
   $("codeInput").focus();
 };

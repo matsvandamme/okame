@@ -175,6 +175,22 @@ void Ui::update(const Env& env) {
     case Screen::Lights:
       screen_ = forced;
       break;
+    case Screen::Message: {
+      // Envelope 1.5 s, then the text scrolls past twice.
+      int w = Frame::textWidth(msgText_, 2);
+      uint32_t scrollMs = (uint32_t)(LCD_W + w) * 55;
+      if (now - t0_ > 1500 + 2 * scrollMs) {
+        msgDone_ = true;
+        screen_ = forced;
+      }
+      break;
+    }
+    case Screen::Picture:
+      if (now - t0_ > picSecs_ * 1000u) screen_ = forced;
+      break;
+    case Screen::Code:
+      if ((int32_t)(now - showUntil_) > 0) screen_ = forced;
+      break;
     default:
       break;
   }
@@ -359,6 +375,32 @@ void Ui::select(MenuItem m, const Env& env) {
   remoteAction(a, r, now);
 }
 
+void Ui::showMessage(const char* from, const char* text, uint32_t nowMs) {
+  snprintf(msgFrom_, sizeof msgFrom_, "%s", from);
+  for (char* c = msgFrom_; *c; c++)
+    if (*c >= 'a' && *c <= 'z') *c -= 32;
+  snprintf(msgText_, sizeof msgText_, "%s", text);
+  screen_ = Screen::Message;
+  t0_ = nowMs;
+}
+
+void Ui::showPicture(const uint8_t* frames, int count, uint16_t frameMs, uint16_t secs, uint32_t nowMs) {
+  picCount_ = count < MAX_PIC_FRAMES ? count : MAX_PIC_FRAMES;
+  memcpy(pic_, frames, picCount_ * sizeof pic_[0]);
+  picMs_ = frameMs < 80 ? 80 : frameMs;
+  picSecs_ = secs < 2 ? 2 : secs > 30 ? 30 : secs;
+  screen_ = Screen::Picture;
+  t0_ = nowMs;
+}
+
+void Ui::showCode(uint16_t code, const char* title, uint32_t nowMs, uint32_t forMs) {
+  code_ = code;
+  snprintf(codeTitle_, sizeof codeTitle_, "%s", title);
+  screen_ = Screen::Code;
+  t0_ = nowMs;
+  showUntil_ = nowMs + forMs;
+}
+
 bool Ui::startGame(bool duet, uint32_t nowMs) {
   const PetState& s = pet_.state();
   if (s.stage == Stage::Egg || s.stage == Stage::Gone || s.lightsOff) return false;
@@ -396,6 +438,9 @@ void Ui::draw(const Env& env) {
     case Screen::Gone: drawGone(env); break;
     case Screen::Ota: drawOta(env); break;
     case Screen::Lights: drawLights(env); break;
+    case Screen::Message: drawMessage(env); break;
+    case Screen::Picture: drawPicture(env); break;
+    case Screen::Code: drawCode(env); break;
   }
 }
 
@@ -701,6 +746,38 @@ void Ui::drawOta(const Env& env) {
   frame_.textCentered("UPDATE", 3);
   frame_.rect(4, 11, 32, 5);
   frame_.fillRect(5, 12, (30 * env.otaProgress) / 100, 3);
+}
+
+void Ui::drawMessage(const Env& env) {
+  uint32_t el = env.nowMs - t0_;
+  if (el < 1500) {
+    int bounce = (el / 200) % 2;
+    frame_.sprite(spr::mail, (LCD_W - spr::mail.w) / 2, 7 - bounce, false, Pattern::Solid, 1);
+    if ((el / 300) % 2) frame_.sprite(spr::sparkle, 6, 3);
+    else frame_.sprite(spr::sparkle, LCD_W - 11, 4);
+    return;
+  }
+  char head[24];
+  snprintf(head, sizeof head, "%s", msgFrom_[0] ? msgFrom_ : "MAIL");
+  frame_.sprite(spr::mail, 0, 0);
+  frame_.text(head, 11, 1);
+  int w = Frame::textWidth(msgText_, 2);
+  uint32_t pass = (uint32_t)(LCD_W + w) * 55;
+  int x = LCD_W - (int)(((el - 1500) % pass) / 55);
+  frame_.text(msgText_, x, 9, 2);
+}
+
+void Ui::drawPicture(const Env& env) {
+  if (!picCount_) return;
+  int i = ((env.nowMs - t0_) / picMs_) % picCount_;
+  frame_.unpack(pic_[i]);
+}
+
+void Ui::drawCode(const Env& env) {
+  char buf[8];
+  frame_.textCentered(codeTitle_, 1);
+  snprintf(buf, sizeof buf, "%04u", code_ % 10000);
+  frame_.textCentered(buf, 9, 2);
 }
 
 void Ui::drawLights(const Env& env) {

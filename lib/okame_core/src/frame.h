@@ -42,6 +42,7 @@ class Frame {
 
   // 100-byte packed copy (row-major, MSB first) for the web page mirror.
   void pack(uint8_t out[LCD_W * LCD_H / 8]) const;
+  void unpack(const uint8_t in[LCD_W * LCD_H / 8]);
 
  private:
   uint8_t bits_[LCD_W * LCD_H];

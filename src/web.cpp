@@ -7,6 +7,7 @@
 #include "net.h"
 #include "ota.h"
 #include "web_assets.h"
+#include "cloud.h"
 
 namespace {
 AsyncWebServer server(80);
@@ -79,7 +80,13 @@ String gameJson() {
   return "null";
 }
 
-String stateJson() {
+}  // namespace
+
+// Also used by the relay link (cloud.cpp).
+namespace web {
+String stateJson();
+}
+String web::stateJson() {
   app::Lock lock;
   uint32_t now = app::epoch();
   const PetState& s = app::pet.state();
@@ -105,9 +112,12 @@ String stateJson() {
   j += ",\"host\":" + jsonString(net::hostname().c_str());
   j += ",\"fw\":\"" FW_NAME "\"";
   j += ",\"game\":" + gameJson();
+  j += ",\"msg\":" + cloud::lastMessageJson();
   j += ",\"frame\":\"" + String(frame) + "\"}";
   return j;
 }
+
+namespace {
 
 bool viaSetupWifi(AsyncWebServerRequest* r) {
   return net::apActive() && r->client()->localIP() == WiFi.softAPIP();
@@ -251,18 +261,18 @@ namespace web {
 
 void begin() {
   server.on("/", HTTP_GET, sendIndex);
-  server.on("/api/state", HTTP_GET, [](AsyncWebServerRequest* r) { sendJson(r, 200, stateJson()); });
+  server.on("/api/state", HTTP_GET, [](AsyncWebServerRequest* r) { sendJson(r, 200, web::stateJson()); });
   server.on("/api/act", HTTP_POST, handleAct);
   server.on("/api/name", HTTP_POST, handleName);
   server.on("/api/tune", HTTP_POST, handleTune);
   server.on("/api/practice", HTTP_POST, handlePractice);
   server.on("/api/pair", HTTP_POST, handlePair);
-  server.on("/api/pair/request", HTTP_POST, [](AsyncWebServerRequest* r) {
+  server.on("/api/pair-request", HTTP_POST, [](AsyncWebServerRequest* r) {
     bool ok = app::requestPair();
     sendJson(r, ok ? 200 : 429, ok ? "{\"ok\":true}" : "{\"error\":\"wait a few seconds\"}");
   });
-  server.on("/api/game", HTTP_POST, handleGame);
-  server.on("/api/game/input", HTTP_POST, handleGameInput);
+  server.on("/api/game-start", HTTP_POST, handleGame);
+  server.on("/api/game-input", HTTP_POST, handleGameInput);
   server.on("/api/settings", HTTP_GET, handleSettings);
   server.on("/api/scan", HTTP_GET, [](AsyncWebServerRequest* r) {
     if (!authorized(r)) return denied(r);
@@ -326,7 +336,7 @@ void loop() {
   }
   if (now >= nextState) {
     nextState = now + 3000;
-    events.send(stateJson().c_str(), "state");
+    events.send(web::stateJson().c_str(), "state");
   }
 }
 

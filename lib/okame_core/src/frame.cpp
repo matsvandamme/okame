@@ -65,6 +65,16 @@ void Frame::spriteInverse(const Sprite& s, int x, int y, bool flip) {
 
 int Frame::text(const char* s, int x, int y, int scale, bool on) {
   for (; *s; s++) {
+    if (*s == '\x01') {  // a pixel heart
+      static const uint8_t heart[5] = {0b11011, 0b11111, 0b11111, 0b01110, 0b00100};
+      for (int gy = 0; gy < 5; gy++)
+        for (int gx = 0; gx < 5; gx++)
+          if (heart[gy] & (0x10 >> gx))
+            for (int j = 0; j < scale; j++)
+              for (int i = 0; i < scale; i++) set(x + gx * scale + i, y + gy * scale + j, on);
+      x += 6 * scale;
+      continue;
+    }
     if (*s == ' ') {
       x += 3 * scale;
       continue;
@@ -82,8 +92,12 @@ int Frame::text(const char* s, int x, int y, int scale, bool on) {
 
 int Frame::textWidth(const char* s, int scale) {
   int w = 0;
-  for (; *s; s++) w += (*s == ' ' ? 3 : 4) * scale;
+  for (; *s; s++) w += (*s == ' ' ? 3 : *s == '\x01' ? 6 : 4) * scale;
   return w > 0 ? w - scale : 0;
+}
+
+void Frame::unpack(const uint8_t in[LCD_W * LCD_H / 8]) {
+  for (int i = 0; i < LCD_W * LCD_H; i++) bits_[i] = in[i / 8] & (0x80 >> (i % 8));
 }
 
 void Frame::pack(uint8_t out[LCD_W * LCD_H / 8]) const {

@@ -49,6 +49,14 @@ inline uint16_t glyph3x5(char c) {
     case '/': return 0b001001010100100;
     case '+': return 0b000010111010000;
     case '%': return 0b101001010100101;
+    case ',': return 0b000000000010100;
+    case '\'': return 0b010010000000000;
+    case '(': return 0b001010010010001;
+    case ')': return 0b100010010010100;
+    case '&': return 0b010101010101011;
+    case '=': return 0b000111000111000;
+    case '*': return 0b000101010101000;
+    case '#': return 0b101111101111101;
     default: return 0;
   }
 }

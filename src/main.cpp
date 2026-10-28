@@ -11,6 +11,7 @@
 #include "render.h"
 #include "storage.h"
 #include "web.h"
+#include "cloud.h"
 
 static int localHour(uint32_t epoch) {
   time_t t = epoch;
@@ -61,7 +62,7 @@ void serialCommands() {
   while (Serial.available()) {
     char c = Serial.read();
     if (c != '\n') {
-      if (line.length() < 32) line += c;
+      if (line.length() < 80) line += c;
       continue;
     }
     line.trim();
@@ -74,6 +75,15 @@ void serialCommands() {
         for (int i = 0; i < 100; i++) sprintf(hex + i * 2, "%02x", packed[i]);
       }
       Serial.printf("FRAME %s\n", hex);
+    } else if (line.startsWith("cloudkey ")) {
+      String k = line.substring(9);
+      k.trim();
+      if (k.length() == 64) {
+        cloud::setKey(k);
+        Serial.println("CLOUDKEY ok");
+      } else {
+        Serial.println("CLOUDKEY bad length");
+      }
     } else if (line == "state") {
       app::Lock lock;
       const PetState& s = app::pet.state();
@@ -181,6 +191,7 @@ void setup() {
   net::begin();
   web::begin();
   ota::begin();
+  cloud::begin();
   log_i("Okame %s (v%d) up", FW_NAME, FW_VERSION);
 }
 
@@ -196,7 +207,8 @@ void loop() {
       bootReal = true;
       if (app::pet.state().eggStart < 1700000000) app::pet.reset(ep);  // first real time: the egg starts now
     }
-    if (clockTrusted() && now - lastTick >= 1000) {
+    // Away from Wi-Fi the bird naps: time stands still, and on return at most 12 h is caught up (Pet::tick).
+    if (clockTrusted() && net::online() && now - lastTick >= 1000) {
       lastTick = now;
       app::pet.tick(ep);
     }
@@ -252,5 +264,6 @@ void loop() {
     ota::loop(net::online(), sc == Screen::Main || sc == Screen::Sleep || sc == Screen::Lights, app::epoch());
   }
   web::loop();
+  cloud::loop();
   delay(15);
 }
