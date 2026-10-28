@@ -221,7 +221,7 @@ def to_lcd_text(text):
 ai = anthropic.AsyncAnthropic(api_key=open(f"{HOME}/anthropic_key").read().strip()) \
     if os.path.exists(f"{HOME}/anthropic_key") else None
 
-PERSONA = """You are Okame (オカメ), a tiny cockatiel who lives in a yellow egg-shaped gadget next to Haruki's MacBook.
+PERSONA = """You are Okame (オカメ), a tiny cockatiel who lives on a little pixel screen plugged into Haruki's MacBook.
 Matthieu (Belgian, from Flanders) made you as a gift for Haruki (Japanese), his girlfriend. You love them both.
 
 Voice: a cheeky, affectionate cockatiel. Short replies (1-3 sentences), playful, a few bird sounds (ピヨ, chirp,
@@ -257,7 +257,7 @@ async def ask(system, prompt, schema=None, effort="low", max_tokens=1500):
 
 def state_line(s):
     if not s:
-        return "unknown (the egg hasn't checked in yet)"
+        return "unknown (my screen hasn't checked in yet)"
     return (f"stage {s.get('stage')}, food {s.get('hunger')}/4, joy {s.get('happy')}/4, mood {s.get('mood')}, "
             f"droppings {s.get('poop')}, sick {s.get('sick')}, cage covered {s.get('lightsOff')}, "
             f"age {s.get('ageDays')} days, name {s.get('name') or 'not named yet'}")
@@ -374,7 +374,7 @@ def online():
 def status_caption():
     s = device["state"]
     if not s:
-        return "🥚 I haven't hatched into this world yet… (the egg hasn't checked in)."
+        return "🥚 I haven't hatched into this world yet… (my screen hasn't checked in yet)."
     seen = "awake on Wi-Fi ✨" if online() else \
         f"napping away from Wi-Fi 💤 (last seen {datetime.fromtimestamp(device['last_seen'], TZ):%a %H:%M})"
     name = esc(s.get("name")) or "Okame"
@@ -499,7 +499,7 @@ async def pairing(chat, name, lang, text):
     db.execute("insert or replace into pairing values(?,?,?,?)", (chat, code, time.time() + 900, 0))
     enqueue("pair", {"code": code}, chat)
     when = "Look at my screen now" if online() else "I'm napping away from Wi-Fi; the code appears when I wake up"
-    await say(chat, f"Hi {esc(name)}! ピヨ 🐦\nTo be friends, type the <b>4-digit code</b> on my egg's screen. "
+    await say(chat, f"Hi {esc(name)}! ピヨ 🐦\nTo be friends, type the <b>4-digit code</b> on my little screen. "
                     f"{when} 👀")
 
 
@@ -517,8 +517,8 @@ async def telegram_loop():
         {"command": "sakura", "description": "Falling sakura 🌸"}, {"command": "song", "description": "Okame composes a whistle 🎶"},
         {"command": "diary", "description": "Okame's diary 📔"}, {"command": "haiku", "description": "A haiku 🍃"},
         {"command": "help", "description": "Everything Okame can do"}])
-    await tg("setMyShortDescription", short_description="Okame オカメ, a pocket cockatiel living in a little yellow egg 🐦💛")
-    await tg("setMyDescription", description="ピヨ! I'm Okame, a tiny cockatiel who lives in a yellow egg next to "
+    await tg("setMyShortDescription", short_description="Okame オカメ, a pocket cockatiel living on a little pixel screen 🐦💛")
+    await tg("setMyDescription", description="ピヨ! I'm Okame, a tiny cockatiel who lives on a little screen next to "
              "Haruki's laptop. Feed me, play with me and send notes that pop up on my screen. Press Start to become "
              "my friend (you'll need the code on my screen).")
     while True:
@@ -627,6 +627,16 @@ async def health(request):
     return web.json_response({"ok": True, "egg_online": online()})
 
 
+async def claim(request):
+    # One-time handover of the device key to a reflashed egg: an admin puts {"token", "until"} in kv "claim".
+    c = kv_get("claim", {})
+    if not c or time.time() > c["until"] or not hmac.compare_digest(request.match_info["token"], c["token"]):
+        return web.Response(status=404)
+    kv_set("claim", {})
+    log.info("device key handed over by claim link")
+    return web.Response(text=CFG["device_key"])
+
+
 async def main():
     global session
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -634,6 +644,7 @@ async def main():
     app = web.Application(client_max_size=64 * 1024)
     app.router.add_post("/v1/sync", sync)
     app.router.add_get("/v1/health", health)
+    app.router.add_get("/v1/claim/{token}", claim)
     ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ctx.load_cert_chain(f"{HOME}/relay.crt", f"{HOME}/relay.key")
     runner = web.AppRunner(app, access_log=None)
