@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffd21f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Okame">
+<title>Okame</title>
+<style>
+:root {
+  --yellow: #ffd21f;
+  --yellow-2: #ffe36b;
+  --yellow-3: #f2b705;
+  --ink: #17140c;
+  --cream: #fff8dc;
+  --lcd-bg: #9eaa8a;
+  --lcd-ink: #1e2418;
+  --lcd-ghost: #929e7f;
+  --orange: #ff8a3d;
+  --shadow: 0 4px 0 var(--ink);
+  --font: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background-color: var(--yellow);
+  background-image: radial-gradient(var(--yellow-3) 1.2px, transparent 1.6px);
+  background-size: 18px 18px;
+  min-height: 100vh;
+  padding: max(14px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+}
+main { max-width: 440px; margin: 0 auto; }
+header { display: flex; align-items: baseline; justify-content: space-between; margin: 2px 4px 12px; }
+.logo { font-weight: 900; font-size: 30px; letter-spacing: 1px; }
+.logo small { display: block; font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .75; }
+.jp { font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", var(--font); }
+.pill { font-size: 12px; font-weight: 800; background: var(--ink); color: var(--yellow); padding: 4px 10px; border-radius: 99px; }
+
+/* The egg-shaped handheld that frames the LCD. */
+.egg {
+  position: relative;
+  background: radial-gradient(120% 90% at 30% 20%, var(--yellow-2), var(--yellow) 45%, var(--yellow-3));
+  border: 4px solid var(--ink);
+  border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%;
+  padding: 44px 30px 34px;
+  box-shadow: 0 8px 0 var(--ink), inset -10px -14px 0 rgba(0,0,0,.06);
+  margin: 0 6px 22px;
+}
+.egg .brand { text-align: center; font-weight: 900; letter-spacing: 4px; font-size: 13px; margin: -22px 0 10px; }
+.bezel {
+  background: var(--ink);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: inset 0 0 0 3px #3a3424;
+}
+canvas.lcd { display: block; width: 100%; image-rendering: pixelated; border-radius: 4px; background: var(--lcd-bg); }
+.cheeks { display: flex; justify-content: space-between; margin: 12px 18px 0; }
+.cheeks span { width: 18px; height: 12px; border-radius: 50%; background: var(--orange); opacity: .85; }
+.status { display: flex; justify-content: center; gap: 16px; margin-top: 10px; font-weight: 800; font-size: 13px; }
+.hearts { letter-spacing: 1px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; background: #8a8a8a; }
+.dot.on { background: #2fbf4a; box-shadow: 0 0 0 2px rgba(47,191,74,.25); }
+
+.card {
+  background: var(--cream);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.card h2 { margin: 0 0 12px; font-size: 18px; display: flex; justify-content: space-between; align-items: baseline; }
+.card h2 .jp { font-size: 12px; font-weight: 700; opacity: .6; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.tab {
+  font: inherit; font-weight: 800; font-size: 13px;
+  border: 3px solid var(--ink); border-radius: 12px; background: var(--cream);
+  padding: 8px 2px 6px; box-shadow: 0 3px 0 var(--ink); color: var(--ink);
+}
+.tab .jp { display: block; font-size: 10px; opacity: .65; }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--yellow); }
+.panel[hidden] { display: none; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+button.act, .btn {
+  font: inherit; font-weight: 800; color: var(--ink);
+  background: #fff; border: 3px solid var(--ink); border-radius: 14px;
+  box-shadow: 0 4px 0 var(--ink); padding: 10px 6px 8px; cursor: pointer;
+  transition: transform .06s, box-shadow .06s;
+}
+button.act:active, .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+button.act canvas { display: block; margin: 0 auto 6px; width: 30px; height: 30px; image-rendering: pixelated; }
+button.act span { font-size: 13px; }
+.btn { padding: 10px 14px; }
+.btn.dark { background: var(--ink); color: var(--yellow); }
+.btn.wide { width: 100%; }
+.btn:disabled { opacity: .4; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { flex: 1; }
+input[type=text], input[type=password], input[inputmode=numeric], select {
+  font: inherit; font-size: 16px; width: 100%;
+  border: 3px solid var(--ink); border-radius: 12px; padding: 10px 12px; background: #fff; color: var(--ink);
+}
+label { display: block; font-weight: 800; font-size: 13px; margin: 10px 0 4px; }
+.hint { font-size: 13px; line-height: 1.4; opacity: .8; margin: 6px 0 10px; }
+.notes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.notes button { height: 54px; }
+.staff { display: flex; gap: 6px; min-height: 44px; align-items: flex-end; padding: 8px; border: 3px dashed var(--ink); border-radius: 12px; margin: 12px 0; background: #fff; }
+.staff i { width: 22px; border-radius: 6px 6px 3px 3px; background: var(--ink); }
+.staff em { font-size: 13px; opacity: .6; font-style: normal; align-self: center; }
+.level { display: flex; gap: 6px; }
+.level b { width: 14px; height: 14px; border: 3px solid var(--ink); border-radius: 4px; }
+.level b.on { background: var(--orange); }
+ul.nets { list-style: none; padding: 0; margin: 0 0 6px; }
+ul.nets li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 2px dotted var(--ink); font-weight: 700; }
+ul.nets li button { font: inherit; font-size: 12px; border: 2px solid var(--ink); border-radius: 8px; background: #fff; padding: 4px 8px; }
+.banner { background: var(--ink); color: var(--yellow); border-radius: 14px; padding: 12px 14px; font-weight: 800; margin-bottom: 16px; line-height: 1.35; }
+.toast {
+  position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(140%);
+  background: var(--ink); color: var(--yellow); font-weight: 800; padding: 12px 18px; border-radius: 99px;
+  transition: transform .25s, opacity .25s; max-width: 90vw; text-align: center; z-index: 10;
+  opacity: 0; visibility: hidden;
+}
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
+.code { letter-spacing: 12px; text-align: center; font-family: var(--mono); font-size: 28px !important; font-weight: 800; }
+footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo">Okame<small class="jp">オカメ · POCKET COCKATIEL</small></div>
+    <span class="pill" id="online"><span class="dot"></span>…</span>
+  </header>
+
+  <div class="banner" id="setupBanner" hidden>Setup mode: add your home Wi-Fi under <b>Settings</b> so your bird can wake up there.</div>
+
+  <section class="egg" aria-label="Your bird's screen">
+    <div class="brand jp">オカメ</div>
+    <div class="bezel"><canvas class="lcd" id="lcd" width="160" height="80" role="img" aria-label="Live screen of the dongle"></canvas></div>
+    <div class="cheeks" aria-hidden="true"><span></span><span></span></div>
+    <div class="status">
+      <span>Food <span class="hearts" id="food">♡♡♡♡</span></span>
+      <span>Joy <span class="hearts" id="joy">♡♡♡♡</span></span>
+    </div>
+  </section>
+
+  <section class="card" id="nameCard" hidden>
+    <h2>Name your bird <span class="jp">なまえ</span></h2>
+    <p class="hint">Your chick has hatched! Give it a name (up to 16 letters). It also becomes this page's address.</p>
+    <div class="row"><input type="text" id="nameInput" maxlength="16" autocomplete="off" placeholder="e.g. Mochi"><button class="btn dark" id="nameBtn" style="flex:0 0 auto">Save</button></div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="care">Care<span class="jp">おせわ</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="tune">Tune<span class="jp">うた</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="photo">Photo<span class="jp">しゃしん</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="settings">Settings<span class="jp">せってい</span></button>
+  </nav>
+
+  <section class="card panel" id="tab-care">
+    <h2><span id="title">Your bird</span> <span class="jp" id="meta"></span></h2>
+    <div class="grid" id="careGrid"></div>
+    <p class="hint" id="moodHint"></p>
+  </section>
+
+  <section class="card panel" id="tab-tune" hidden>
+    <h2>Teach a whistle <span class="jp">うた</span></h2>
+    <p class="hint">Tap up to 8 notes. Cockatiels learn by repetition: practise together once a day, three days in a row, and your bird will start whistling it by itself.</p>
+    <div class="notes" id="noteButtons"></div>
+    <div class="staff" id="staff"><em>no notes yet</em></div>
+    <div class="row">
+      <button class="btn" id="playTune">▶ Play</button>
+      <button class="btn" id="clearTune">Clear</button>
+      <button class="btn dark" id="teachTune">Teach</button>
+    </div>
+    <label>Learning</label>
+    <div class="row" style="justify-content:space-between">
+      <div class="level" id="level"><b></b><b></b><b></b></div>
+      <button class="btn dark" id="practice" style="flex:0 0 auto">Practise together</button>
+    </div>
+    <label class="row" style="margin-top:14px"><span>Chirps on this phone</span><input type="checkbox" id="sound" checked style="flex:0 0 auto;width:22px;height:22px"></label>
+  </section>
+
+  <section class="card panel" id="tab-photo" hidden>
+    <h2>Photo booth <span class="jp">しゃしん</span></h2>
+    <p class="hint">Saves the bird's screen as a picture on your phone.</p>
+    <canvas id="photoPreview" width="640" height="420" style="width:100%;border-radius:12px;border:3px solid var(--ink)"></canvas>
+    <p></p>
+    <button class="btn dark wide" id="snap">📸 Save picture</button>
+  </section>
+
+  <section class="card panel" id="tab-settings" hidden>
+    <h2>Settings <span class="jp">せってい</span></h2>
+    <div id="locked">
+      <p class="hint">Settings are protected. <b>Hold the dongle's button for 5 seconds</b>: a 4-digit code appears on its screen. Type it here.</p>
+      <div class="row"><input inputmode="numeric" class="code" id="codeInput" maxlength="4" autocomplete="one-time-code" placeholder="····"><button class="btn dark" id="pairBtn" style="flex:0 0 auto">Unlock</button></div>
+    </div>
+    <div id="unlocked" hidden>
+      <label>Wi-Fi networks it wakes up on</label>
+      <ul class="nets" id="nets"></ul>
+      <label for="ssid">Add a network</label>
+      <select id="scan"><option value="">Pick a nearby network…</option></select>
+      <p></p>
+      <input type="text" id="ssid" placeholder="Network name" autocomplete="off">
+      <p></p>
+      <input type="password" id="pass" placeholder="Password" autocomplete="off">
+      <p></p>
+      <button class="btn dark wide" id="addNet">Add network</button>
+      <label for="rename">Rename</label>
+      <div class="row"><input type="text" id="rename" maxlength="16" autocomplete="off"><button class="btn" id="renameBtn" style="flex:0 0 auto">Rename</button></div>
+      <label>Updates</label>
+      <p class="hint" id="otaStatus">…</p>
+      <button class="btn wide" id="otaBtn">Check for an update now</button>
+      <label>Start over</label>
+      <button class="btn wide" id="newEgg">New egg…</button>
+    </div>
+  </section>
+
+  <footer id="foot">Okame</footer>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const ICONS = /*ICONS*/{};
+const $ = (id) => document.getElementById(id);
+const PAL = { bg: "#9eaa8a", ink: "#1e2418", ghost: "#929e7f", shadow: "#8a967a" };
+let state = null, frameHex = "", token = sessionStorage.getItem("okame-token") || "";
+let tune = [];
+
+// ---------- LCD rendering (same look as the dongle: 3x3 dots, 1px gap, shadow) ----------
+function drawLcd(ctx, hex, scale) {
+  const s = scale || 1;
+  ctx.fillStyle = PAL.bg;
+  ctx.fillRect(0, 0, 160 * s, 80 * s);
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 40; x++) {
+    const i = y * 40 + x;
+    const on = hex.length === 200 && (parseInt(hex.substr((i >> 3) * 2, 2), 16) & (0x80 >> (i & 7)));
+    if (on) { ctx.fillStyle = PAL.shadow; ctx.fillRect((x * 4 + 1) * s, (y * 4 + 1) * s, 3 * s, 3 * s); }
+    ctx.fillStyle = on ? PAL.ink : PAL.ghost;
+    ctx.fillRect(x * 4 * s, y * 4 * s, 3 * s, 3 * s);
+  }
+}
+const lcd = $("lcd").getContext("2d");
+function showFrame(hex) { frameHex = hex; drawLcd(lcd, hex); drawPhoto(); }
+
+function iconCanvas(name) {
+  const c = document.createElement("canvas");
+  const rows = ICONS[name] || [], k = 6;  // 30x30, shown 1:1 and pixelated on retina
+  c.width = c.height = 5 * k;
+  const g = c.getContext("2d");
+  g.fillStyle = "#17140c";
+  rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch === "#") g.fillRect(x * k, y * k, k, k); }));
+  return c;
+}
+
+// ---------- sound: soft synthetic cockatiel chirps ----------
+let audio = null;
+const PITCH = [1500, 1800, 2150, 2550, 3000];
+function ac() {
+  if (!$("sound").checked) return null;
+  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (audio.state === "suspended") audio.resume();
+  return audio;
+}
+function chirp(freq, at, dur, slide) {
+  const a = ac(); if (!a) return;
+  const t = a.currentTime + (at || 0), d = dur || 0.14;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = "sine";
+  o.frequency.setValueAtTime(freq * 0.82, t);
+  o.frequency.exponentialRampToValueAtTime(freq * (slide || 1.12), t + d * 0.7);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  o.connect(g).connect(a.destination);
+  o.start(t); o.stop(t + d + 0.02);
+}
+function happyChirp() { chirp(2300, 0, 0.1); chirp(2800, 0.12, 0.12); }
+function playNotes(notes) { notes.forEach((n, i) => chirp(PITCH[n], i * 0.28, 0.24, 1.05)); }
+
+// ---------- API ----------
+async function api(path, body) {
+  const opt = body ? { method: "POST", body: new URLSearchParams(body) } : {};
+  opt.headers = token ? { "X-Okame-Token": token } : {};
+  const r = await fetch(path, opt);
+  let j = {};
+  try { j = await r.json(); } catch (e) {}
+  if (r.status === 401) { setLocked(true); }
+  return { ok: r.ok, status: r.status, ...j };
+}
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+// ---------- state ----------
+const hearts = (n) => "♥".repeat(n) + "♡".repeat(4 - n);
+const MOOD_TEXT = {
+  content: "Happy and chatty.", meh: "Doing okay, could use some attention.",
+  sad: "Feeling neglected: try some seed or a scritch.", sick: "Looks poorly: a visit to the vet will help.",
+  asleep: "Sleeping. Shh…",
+};
+function applyState(s) {
+  state = s;
+  if (s.frame) showFrame(s.frame);
+  $("food").textContent = hearts(s.hunger);
+  $("joy").textContent = hearts(s.happy);
+  $("title").textContent = s.name || (s.stage === "egg" ? "An egg" : "Your bird");
+  const stage = { egg: "egg", chick: "chick", juvenile: "juvenile", adult: s.variant + " adult", gone: "flew away" }[s.stage];
+  $("meta").textContent = s.stage === "egg" ? "" : `${stage} · ${s.ageDays}d · ${s.weight}g`;
+  let hint = MOOD_TEXT[s.mood] || "";
+  if (s.stage === "egg") hint = "The egg is wobbling… it will hatch in a couple of minutes.";
+  if (s.stage === "gone") hint = "Your bird flew off to find a friend. Hold the dongle's button to start with a new egg.";
+  if (s.poop >= 2) hint += " The cage needs a bath.";
+  if (s.night && !s.lightsOff && s.stage !== "egg") hint += " It's late: cover the cage.";
+  $("moodHint").textContent = hint;
+  $("nameCard").hidden = !!s.name || s.stage === "egg" || s.stage === "gone";
+  $("setupBanner").hidden = !s.setup;
+  $("online").lastChild.textContent = s.setup ? " setup" : " live";
+  $("online").firstChild.classList.add("on");
+  document.title = (s.name || "Okame") + " · Okame";
+  $("foot").textContent = `${s.host}.local · firmware ${s.fw}`;
+  [...$("level").children].forEach((b, i) => b.classList.toggle("on", i < s.tuneLevel));
+  if (s.tune && !tune.length) { tune = [...s.tune].map(Number); renderStaff(); }
+}
+async function refresh() {
+  try { applyState(await api("/api/state")); }
+  catch (e) { $("online").lastChild.textContent = " offline"; $("online").firstChild.classList.remove("on"); }
+}
+
+// ---------- care ----------
+const CARE = [
+  ["seed", "ico_seed", "Seed"], ["millet", "ico_millet", "Millet"], ["bath", "ico_bath", "Bath"],
+  ["vet", "ico_vet", "Vet"], ["light", "ico_light", "Lights"], ["scritch", "heart", "Scritch"],
+];
+const RESULT_TEXT = {
+  refused: { seed: "Not hungry right now.", default: "It doesn't want that now." },
+  "not-needed": { bath: "The cage is already clean.", vet: "Healthy as can be!", default: "Not needed." },
+  sleeping: { default: "Shh, it's sleeping. Uncover the cage first." },
+};
+for (const [act, icon, label] of CARE) {
+  const b = document.createElement("button");
+  b.className = "act";
+  b.append(iconCanvas(icon));
+  const s = document.createElement("span"); s.textContent = label; b.append(s);
+  b.onclick = async () => {
+    ac();
+    const r = await api("/api/act", { a: act });
+    if (r.result === "ok") { happyChirp(); toast({ seed: "Crunch crunch!", millet: "A treat! ♥", bath: "Splish splash, all clean.", vet: "Feeling better already.", light: "Lights toggled.", scritch: "Head scritches! ♥" }[act]); }
+    else { const t = RESULT_TEXT[r.result] || {}; toast(t[act] || t.default || "Hmm, that didn't work."); }
+    refresh();
+  };
+  $("careGrid").append(b);
+}
+
+// ---------- name ----------
+$("nameBtn").onclick = async () => {
+  const n = $("nameInput").value.trim();
+  if (!n) return toast("Type a name first.");
+  const r = await api("/api/name", { name: n });
+  if (r.ok) { toast(`Hello, ${n}! You can also open ${r.host}.local`); happyChirp(); }
+  else toast(r.error || "Couldn't save the name.");
+  refresh();
+};
+
+// ---------- tune ----------
+for (let n = 0; n < 5; n++) {
+  const b = document.createElement("button");
+  b.className = "btn";
+  b.textContent = ["low", "lo", "mid", "hi", "high"][n];
+  b.style.background = `hsl(45, 100%, ${92 - n * 6}%)`;
+  b.onclick = () => { if (tune.length >= 8) return toast("8 notes max."); tune.push(n); chirp(PITCH[n], 0, 0.22, 1.05); renderStaff(); };
+  $("noteButtons").append(b);
+}
+function renderStaff() {
+  const st = $("staff");
+  st.replaceChildren();
+  if (!tune.length) { const e = document.createElement("em"); e.textContent = "no notes yet"; st.append(e); return; }
+  tune.forEach((n) => { const i = document.createElement("i"); i.style.height = 10 + n * 7 + "px"; st.append(i); });
+}
+$("playTune").onclick = () => tune.length ? playNotes(tune) : toast("Tap some notes first.");
+$("clearTune").onclick = () => { tune = []; renderStaff(); };
+$("teachTune").onclick = async () => {
+  if (!tune.length) return toast("Tap some notes first.");
+  const r = await api("/api/tune", { notes: tune.join("") });
+  if (r.ok) { playNotes(tune); toast("New tune! Practise it together every day."); }
+  refresh();
+};
+$("practice").onclick = async () => {
+  if (!state || !state.tune) return toast("Teach a tune first.");
+  playNotes([...state.tune].map(Number));
+  const r = await api("/api/practice");
+  toast(r.learned ? (r.level >= 3 ? "It knows the tune now! 🎶" : "Good practice! Come back tomorrow.") : (r.level >= 3 ? "It already knows this one." : "Already practised today."));
+  refresh();
+};
+
+// ---------- photo booth ----------
+const photo = $("photoPreview").getContext("2d");
+function drawPhoto() {
+  const c = photo.canvas, W = c.width, H = c.height;
+  photo.fillStyle = "#ffd21f"; photo.fillRect(0, 0, W, H);
+  photo.fillStyle = "#f2b705";
+  for (let y = 9; y < H; y += 18) for (let x = 9; x < W; x += 18) { photo.beginPath(); photo.arc(x, y, 2, 0, 7); photo.fill(); }
+  photo.fillStyle = "#17140c";
+  photo.beginPath(); photo.roundRect(40, 40, 560, 300, 26); photo.fill();
+  const off = document.createElement("canvas"); off.width = 520; off.height = 260;
+  drawLcd(off.getContext("2d"), frameHex, 3.25);
+  photo.drawImage(off, 60, 60);
+  photo.font = "900 28px " + getComputedStyle(document.body).fontFamily;
+  photo.fillText((state && state.name) || "Okame", 44, 388);
+  photo.font = "700 18px " + getComputedStyle(document.body).fontFamily;
+  photo.textAlign = "right";
+  photo.fillText(new Date().toLocaleDateString(), W - 44, 388);
+  photo.textAlign = "left";
+}
+$("snap").onclick = () => {
+  drawPhoto();
+  photo.canvas.toBlob((b) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = `${(state && state.name) || "okame"}-${Date.now()}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+};
+
+// ---------- settings ----------
+function setLocked(locked) {
+  $("locked").hidden = !locked;
+  $("unlocked").hidden = locked;
+  if (locked) { token = ""; sessionStorage.removeItem("okame-token"); }
+}
+async function loadSettings() {
+  const r = await api("/api/settings");
+  if (!r.ok) return setLocked(true);
+  setLocked(false);
+  const ul = $("nets");
+  ul.replaceChildren();
+  if (!r.networks.length) { const li = document.createElement("li"); li.textContent = "None yet: add one below."; ul.append(li); }
+  r.networks.forEach((ssid) => {
+    const li = document.createElement("li");
+    const s = document.createElement("span"); s.textContent = ssid;
+    const b = document.createElement("button"); b.textContent = "Remove";
+    b.onclick = async () => { await api("/api/networks/remove", { ssid }); loadSettings(); };
+    li.append(s, b); ul.append(li);
+  });
+  $("otaStatus").textContent = `Firmware ${r.fw}. Last update check: ${r.ota}.`;
+  if (state) $("rename").value = state.name || "";
+  loadScan();
+}
+async function loadScan(retry) {
+  const r = await fetch("/api/scan", { headers: token ? { "X-Okame-Token": token } : {} });
+  if (!r.ok) return;
+  const list = await r.json();
+  if (list === null) { if ((retry || 0) < 5) setTimeout(() => loadScan((retry || 0) + 1), 1500); return; }
+  const sel = $("scan");
+  sel.replaceChildren(new Option("Pick a nearby network…", ""));
+  const seen = new Set();
+  list.sort((a, b) => b.rssi - a.rssi).forEach((n) => {
+    if (!n.ssid || seen.has(n.ssid)) return;
+    seen.add(n.ssid);
+    sel.append(new Option(`${n.ssid}  (${n.rssi > -60 ? "strong" : n.rssi > -75 ? "ok" : "weak"})`, n.ssid));
+  });
+}
+$("scan").onchange = () => { if ($("scan").value) $("ssid").value = $("scan").value; $("pass").focus(); };
+$("pairBtn").onclick = async () => {
+  const r = await api("/api/pair", { code: $("codeInput").value.trim() });
+  if (r.token) { token = r.token; sessionStorage.setItem("okame-token", token); toast("Unlocked for 30 minutes."); loadSettings(); }
+  else toast(r.triesLeft ? `Wrong code. ${r.triesLeft} tries left.` : "No valid code. Hold the button for 5 s for a new one.");
+};
+$("addNet").onclick = async () => {
+  const ssid = $("ssid").value.trim();
+  if (!ssid) return toast("Pick or type a network name.");
+  const r = await api("/api/networks/add", { ssid, pass: $("pass").value });
+  toast(r.ok ? `Saved "${ssid}". Your bird will wake up there.` : (r.error || "Couldn't save."));
+  $("pass").value = "";
+  loadSettings();
+};
+$("renameBtn").onclick = async () => {
+  const r = await api("/api/name", { name: $("rename").value.trim() });
+  toast(r.ok ? `Renamed. New address: ${r.host}.local` : (r.error || "Couldn't rename."));
+  refresh();
+};
+$("otaBtn").onclick = async () => { await api("/api/ota/check"); toast("Checking for new feathers…"); setTimeout(loadSettings, 8000); };
+let eggArmed = 0;
+$("newEgg").onclick = async () => {
+  if (Date.now() - eggArmed > 4000) { eggArmed = Date.now(); $("newEgg").textContent = "Tap again to really start over"; return; }
+  $("newEgg").textContent = "New egg…";
+  await api("/api/new-egg");
+  toast("A fresh egg. 🥚");
+  refresh();
+};
+
+// ---------- tabs ----------
+document.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", x === t));
+  document.querySelectorAll(".panel").forEach((p) => p.hidden = p.id !== "tab-" + t.dataset.tab);
+  if (t.dataset.tab === "settings") loadSettings();
+  if (t.dataset.tab === "photo") drawPhoto();
+});
+
+// ---------- live updates ----------
+function connectEvents() {
+  if (!window.EventSource) return setInterval(refresh, 1500);
+  const es = new EventSource("/api/events");
+  es.addEventListener("frame", (e) => showFrame(e.data));
+  es.addEventListener("state", (e) => applyState(JSON.parse(e.data)));
+  es.addEventListener("tune", (e) => playNotes([...e.data].map(Number)));
+  es.onerror = () => { $("online").firstChild.classList.remove("on"); };
+}
+document.addEventListener("pointerdown", () => ac(), { once: true });
+refresh().then(() => { if (state && state.setup) document.querySelector('[data-tab="settings"]').click(); });
+connectEvents();
+</script>
+</body>
+</html>

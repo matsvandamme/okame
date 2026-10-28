@@ -1,0 +1,16 @@
+.pio/
+out/
+include/secrets.h
+*.key
+.DS_Store
+__pycache__/
+render/out/
+manual/out/
+case/out/
+case/.venv/
+case/out/
+case/ref/
+render/out/
+src/web_assets.h
+spec-okame.md
+.okame.interview.json
