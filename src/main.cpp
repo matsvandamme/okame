@@ -41,20 +41,6 @@ String sessionToken;
 uint32_t sessionUntil = 0;
 bool tuneEvent = false;
 
-// Button on GPIO0 (active low), debounced.
-bool buttonState = false, buttonRaw = false;
-uint32_t buttonChanged = 0;
-
-void pollButton() {
-  bool raw = digitalRead(PIN_BUTTON) == LOW;
-  uint32_t now = millis();
-  if (raw != buttonRaw) {
-    buttonRaw = raw;
-    buttonChanged = now;
-  }
-  if (now - buttonChanged > 20) buttonState = buttonRaw;
-}
-
 void backlight(uint8_t level) { ledcWrite(PIN_LCD_BL, level); }
 
 void save() {
@@ -108,6 +94,18 @@ void frameHex(char out[201]) {
 
 bool pairActive() { return pairCode && millis() < pairUntil && pairTries < PAIR_MAX_TRIES; }
 
+bool requestPair() {
+  Lock lock;
+  static uint32_t lastAsk = 0;
+  uint32_t now = millis();
+  if (lastAsk && now - lastAsk < PAIR_REQUEST_GAP_MS) return false;
+  lastAsk = now;
+  pairCode = 1000 + esp_random() % 9000;
+  pairUntil = now + PAIR_VALID_MS;
+  pairTries = 0;
+  return true;
+}
+
 String tryPair(const String& code, int& triesLeft) {
   Lock lock;
   if (!pairActive()) {
@@ -151,7 +149,6 @@ extern "C" bool verifyRollbackLater() { return true; }
 
 void setup() {
   Serial.begin(115200);
-  pinMode(PIN_BUTTON, INPUT_PULLUP);
   ledcAttach(PIN_LCD_BL, 5000, 8);
   backlight(0);
   lcd.init();
@@ -177,7 +174,6 @@ void setup() {
 
 void loop() {
   uint32_t now = millis();
-  pollButton();
   serialCommands();
   net::loop();
 
@@ -192,7 +188,7 @@ void loop() {
 
     env.nowMs = now;
     env.epoch = ep;
-    env.buttonDown = buttonState;
+    env.buttonDown = false;  // the BOOT button sits on the underside, inside the egg: all input comes from the page
     env.online = net::online();
     env.apMode = net::apActive();
     env.apSsid = net::apSsid();
@@ -203,11 +199,6 @@ void loop() {
     if (net::takeVisitor() && app::ui.screen() == Screen::Main) app::ui.visitor(now);
     app::ui.update(env);
 
-    if (app::ui.takePairRequest()) {
-      pairCode = 1000 + esp_random() % 9000;
-      pairUntil = now + PAIR_VALID_MS;
-      pairTries = 0;
-    }
     if (app::ui.takeDirty()) saveWanted = true;
 
     // A learned tune gets whistled now and then while the bird is awake and content.

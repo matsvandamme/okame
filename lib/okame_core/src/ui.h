@@ -44,6 +44,11 @@ class Ui {
   // An action done from the phone page: play its animation.
   void remoteAction(Action a, Result r, uint32_t nowMs);
 
+  // Games are started and played from the phone page.
+  bool startGame(bool duet, uint32_t nowMs);
+  void gameInput(Press p, uint32_t nowMs);
+  bool inGame() const { return screen_ == Screen::Duet || screen_ == Screen::Peek; }
+
   // Set when the user held the button long enough to ask for a pairing code.
   bool takePairRequest() {
     bool r = pairRequest_;

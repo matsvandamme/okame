@@ -17,6 +17,7 @@ uint32_t epoch();
 void requestSave();
 void frameHex(char out[201]);
 bool pairActive();
+bool requestPair();  // show a fresh code on the LCD; false if asked too recently
 // Returns a session token on success, "" on failure; triesLeft reports what remains.
 String tryPair(const String& code, int& triesLeft);
 bool sessionValid(const String& token);
