@@ -330,7 +330,7 @@ def scene_desk(png):
     # Laptop to the right of the egg; the egg's cable end (+X) faces it.
     lap_x = 0.215
     base, ports = build_laptop((lap_x, 0.035))
-    root.location = (-0.03, -0.05, 0)
+    root.location = (-0.075, -0.06, 0)
     root.rotation_euler = (0, 0, math.radians(-8))
     bpy.context.view_layer.update()  # make root.matrix_world current
     # The cable's USB-A socket plugs onto the egg's plug; the cable runs over the desk to the laptop.
@@ -344,8 +344,9 @@ def scene_desk(png):
     start = tip + fwd * (sock_len - 9 * MM + 2 * MM)
     port = ports[1].location
     floor_z = 1.7 * MM
-    cable([start, start + fwd * 0.012 + Vector((0, 0, -0.006)), Vector((start.x + 0.03, start.y + 0.01, floor_z)),
-           Vector((port.x - 0.05, port.y - 0.012, floor_z)), Vector((port.x - 0.02, port.y, port.z - 0.001)),
+    mid = Vector(((start.x + port.x) / 2, (start.y + port.y) / 2 - 0.02, floor_z))
+    cable([start, start + fwd * 0.01 + Vector((0, 0, -0.005)), Vector((start.x + 0.025, start.y - 0.004, floor_z)), mid,
+           Vector((port.x - 0.03, port.y - 0.006, floor_z)), Vector((port.x - 0.016, port.y, port.z - 0.001)),
            Vector((port.x - 0.014, port.y, port.z))], 1.6 * MM, white)
     rounded_box("usbc_plug", (14 * MM, 7.5 * MM, 4.5 * MM), 1.5 * MM, white, loc=(port.x - 7.5 * MM, port.y, port.z))
     # Window light from the back left, soft fill from the front right.
@@ -395,10 +396,10 @@ def main():
 
     if "hero" in SHOTS:
         sc, root, parts, img = scene_desk(adult)
-        cam = camera("hero", (-0.24, -0.36, 0.2), (0.05, 0.02, 0.03), lens=50, fstop=4.0, focus=(-0.03, -0.05, 0.02))
+        cam = camera("hero", (-0.27, -0.37, 0.2), (0.02, 0.01, 0.03), lens=50, fstop=4.0, focus=(-0.075, -0.06, 0.02))
         render(sc, cam, OUT / "hero_desk.png", (1920, 1080))
-        cam2 = camera("hero_close", (-0.1, -0.17, 0.1), (-0.015, -0.04, 0.02), lens=70, fstop=4.0,
-                      focus=(-0.03, -0.05, 0.025))
+        cam2 = camera("hero_close", (-0.145, -0.18, 0.1), (-0.055, -0.05, 0.02), lens=70, fstop=4.0,
+                      focus=(-0.075, -0.06, 0.025))
         render(sc, cam2, OUT / "hero_close.png", (1600, 1200))
 
     studio = [s for s in SHOTS if s in ("front", "threequarter", "back", "exploded", "screens", "turntable")]
