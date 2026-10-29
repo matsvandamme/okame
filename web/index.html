@@ -530,7 +530,7 @@ $("padPeek").addEventListener("pointerdown", (e) => {  // reaction game: fire on
   if (e.currentTarget.disabled || !e.isPrimary) return;
   e.preventDefault(); gameInput("tap");
 });
-$("hatchBtn").onclick = async () => { const r = await api("/api/new-egg"); if (!r.ok) return; toast("A fresh egg. 🥚"); refresh(); };
+$("hatchBtn").onclick = async () => { const r = await api("/api/new-egg", {}); if (!r.ok) return; toast("A fresh egg. 🥚"); refresh(); };
 
 // ---------- wardrobe & gifts ----------
 const HATS = [["none", "None", null], ["bow", "Bow tie", "hat_bow"], ["crown", "Sunglasses", "hat_crown"], ["beret", "Scarf", "hat_beret"],
@@ -561,7 +561,7 @@ function showWardrobe(s) {
 }
 $("giftBtn").onclick = async () => {
   ac();
-  const r = await api("/api/gift");
+  const r = await api("/api/gift", {});
   if (!r.ok) return toast("Today's gift is already open. Come back tomorrow! 🎁");
   [0, 0.12, 0.24, 0.36].forEach((t, i) => chirp(2000 + i * 300, t, 0.12));
   $("giftBtn").classList.add("pop"); setTimeout(() => $("giftBtn").classList.remove("pop"), 600);
@@ -613,7 +613,7 @@ $("teachTune").onclick = async () => {
 $("practice").onclick = async () => {
   if (!state || !state.tune) return toast("Teach a tune first.");
   playNotes([...state.tune].map(Number));
-  const r = await api("/api/practice");
+  const r = await api("/api/practice", {});
   toast(r.learned ? (r.level >= 3 ? "It knows the tune now! 🎶" : "Good practice! Come back tomorrow.") : (r.level >= 3 ? "It already knows this one." : "Already practised today."));
   refresh();
 };
@@ -694,7 +694,7 @@ $("pairBtn").onclick = async () => {
   }
 };
 $("showCode").onclick = async () => {
-  const r = await api("/api/pair-request");
+  const r = await api("/api/pair-request", {});
   toast(r.ok ? "Look at Okame: the code is on its screen." : "Just a moment, then try again.");
   $("codeInput").focus();
 };
@@ -714,7 +714,7 @@ $("renameBtn").onclick = async () => {
   toast(r.ok ? "Renamed! ♥" : (r.error || "Couldn't rename."));
   refresh();
 };
-$("otaBtn").onclick = async () => { const r = await api("/api/ota/check"); if (!r.ok) return; toast("Checking for new feathers…"); setTimeout(loadSettings, 8000); };
+$("otaBtn").onclick = async () => { const r = await api("/api/ota/check", {}); if (!r.ok) return; toast("Checking for new feathers…"); setTimeout(loadSettings, 8000); };
 let eggArmed = 0;
 $("newEgg").onclick = async () => {
   if (Date.now() - eggArmed > 4000) {
@@ -723,7 +723,7 @@ $("newEgg").onclick = async () => {
     return;
   }
   $("newEgg").textContent = "New egg…";
-  const r = await api("/api/new-egg");
+  const r = await api("/api/new-egg", {});
   if (!r.ok) return;
   toast("A fresh egg. 🥚");
   refresh();
