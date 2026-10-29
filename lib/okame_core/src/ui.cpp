@@ -162,7 +162,8 @@ void Ui::update(const Env& env) {
   // Screens that override everything else.
   Screen forced = baseScreen(env);
   // A Wi-Fi blip doesn't end a focus session or a game: they run on the dongle's own clock.
-  bool ride = forced == Screen::Sleep && (screen_ == Screen::Focus || inGame());
+  bool ride = forced == Screen::Sleep &&
+              (screen_ == Screen::Focus || inGame() || (screen_ == Screen::Anim && anim_ == Anim::FocusDone));
   if (!ride && (forced == Screen::Ota || forced == Screen::Pair || forced == Screen::Gone ||
                 forced == Screen::Setup || forced == Screen::Sleep)) {
     if (screen_ != forced && !(screen_ == Screen::Anim && anim_ == Anim::Hatch)) {
