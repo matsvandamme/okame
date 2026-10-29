@@ -935,7 +935,7 @@ async def catch_timeout(g, rnd):
 
 async def on_callback(cq):
     arrived = time.time()  # judge the tap by when it reached us, not after our own reply round-trip
-    await tg("answerCallbackQuery", callback_query_id=cq["id"])
+    asyncio.create_task(safe(tg("answerCallbackQuery", callback_query_id=cq["id"])))  # don't let the reply delay it
     parts = (cq.get("data") or "").split(":")
     if len(parts) != 4 or parts[0] != "catch":
         return
