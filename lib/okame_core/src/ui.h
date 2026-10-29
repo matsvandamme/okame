@@ -57,6 +57,11 @@ class Ui {
   // A hug sent from Telegram: "HUG!" with the sender's name, then the bird holds a big heart.
   void showHug(const char* from, uint32_t nowMs);
   // The 💛 button on the phone page: hearts float up from the bird.
+  // Something that plays only once (hatching, the daily cross-off, a homecoming, a holiday greeting).
+  bool onceAnim() const {
+    return screen_ == Screen::Anim && (anim_ == Anim::Hatch || anim_ == Anim::Countdown || anim_ == Anim::HomeDay ||
+                                       anim_ == Anim::Occasion);
+  }
   void love(uint32_t nowMs) {
     // Never over a once-only moment: hatching, the daily cross-off, the home-day party, a holiday greeting.
     bool once = anim_ == Anim::Hatch || anim_ == Anim::Countdown || anim_ == Anim::HomeDay || anim_ == Anim::Occasion;

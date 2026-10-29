@@ -38,6 +38,7 @@ char lastErr[64] = "none";
 String lastMsg = "null";
 String lastHug = "null";
 String wxJson = "null";  // {"kind","temp","place"} for the page
+uint32_t wxMs = 0;       // when it arrived; the page stops showing it after 4 hours, like the LCD
 
 struct Locked {
   Locked() { xSemaphoreTake(mu, portMAX_DELAY); }
@@ -232,6 +233,7 @@ void apply(JsonDocument& cmd, const String& raw) {
     j["temp"] = cmd["temp"] | 0;
     j["place"] = cmd["place"] | "";
     serializeJson(j, wxJson);
+    wxMs = now;
     ack(id, "ok");
   } else if (type == "dates") {  // private dates (her birthday) live on the relay, never in the public code
     PetExtra& x = app::pet.extraMut();
@@ -370,7 +372,7 @@ String lastMessageJson() { return lastMsg; }
 
 String lastHugJson() { return lastHug; }
 
-String weatherJson() { return wxJson; }
+String weatherJson() { return wxMs && millis() - wxMs < 4 * 3600 * 1000u ? wxJson : String("null"); }
 
 void event(const String& json) {
   Locked l;

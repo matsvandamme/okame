@@ -348,7 +348,7 @@ int main(int argc, char** argv) {
     struct { Date d; const char* n; } days[] = {
         {{2027, 6, 1}, "a50_occ_birthday"}, {{2027, 3, 3}, "a51_occ_hina"},     {{2027, 3, 30}, "a52_occ_sakura"},
         {{2027, 5, 5}, "a53_occ_kodomo"},    {{2027, 7, 7}, "a54_occ_tanabata"}, {{2026, 10, 31}, "a55_occ_halloween"},
-        {{2026, 12, 6}, "a56_occ_sint"},     {{2026, 12, 25}, "a57_occ_xmas"},   {{2027, 1, 1}, "a58_occ_newyear"},
+        {{2026, 12, 6}, "a56_occ_sint"},     {{2026, 12, 25}, "a57_occ_xmas"},   {{2027, 1, 1}, "a58_occ_newyear"},     {{2026, 12, 31}, "a59_occ_yearend"},
     };
     for (auto& d : days) {
       Sim s;
@@ -397,8 +397,9 @@ int main(int argc, char** argv) {
     Sim s;
     s.stage(Stage::Adult, Variant::Pearl);
     s.pet.extraMut().rivalRain = 14;
+    s.run(300);
     s.ui.startGame(Ui::Game::Rain, s.t);
-    s.run(2500);
+    s.run(800);
     s.shot("a80_rain_vs");
   }
   {  // Frame sequence of the main screen for the web mock server

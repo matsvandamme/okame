@@ -364,6 +364,7 @@ Occasion occasion(const Date& t, const PetExtra& x) {
   if (md == 1031) return Occasion::Halloween;
   if (md == 1205 || md == 1206) return Occasion::Sinterklaas;
   if (md >= 1224 && md <= 1226) return Occasion::Christmas;
-  if (md == 1231 || md <= 103) return Occasion::NewYear;
+  if (md == 1231) return Occasion::YearEnd;  // よいお年を: あけおめ only from midnight
+  if (md <= 103) return Occasion::NewYear;
   return Occasion::None;
 }

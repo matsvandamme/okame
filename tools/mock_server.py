@@ -33,7 +33,7 @@ if FULL:
         "omikuji": {"today": 0, "seen": 0b100101, "day": 20777},
         "bestDance": 6, "jankenWins": 3,
         "wx": {"kind": "rain", "temp": 12, "place": "Home"},
-        "focusLeft": -1, "focusCount": 7, "rivalRain": 14,
+        "focusLeft": -1, "focusCount": 7, "rivalRain": 14, "occasion": "sinterklaas",
         "words": 3, "wordList": [{"t": "OYASUMI", "learning": False}, {"t": "I LOVE YOU", "learning": False},
                                  {"t": "GOEDEMORGEN", "learning": True}],
     })

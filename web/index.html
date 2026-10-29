@@ -65,6 +65,10 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .countdown .num { font-weight: 900; font-size: 44px; line-height: 1; min-width: 64px; text-align: center; background: var(--ink); color: var(--yellow);
   border-radius: 14px; padding: 8px 6px; }
 .countdown small { display: block; margin-top: 4px; opacity: .65; font-weight: 700; }
+.today { display: flex; gap: 12px; align-items: flex-start; }
+.today .big { font-size: 30px; }
+.today small { display: block; opacity: .65; font-weight: 700; }
+.today p { margin: 4px 0 0; }
 .hug { flex-wrap: wrap; }
 .hug #hugBack { flex-basis: 100%; }
 .hug small { display: block; opacity: .65; font-weight: 700; }
@@ -216,6 +220,11 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div><b id="homeLine">days until Matthieu is home</b><small class="jp" id="homeJp">おかえりまで あと12にち 🚢</small></div>
   </section>
 
+  <section class="card today" id="occCard" hidden>
+    <span class="big" id="occIcon">🎂</span>
+    <div><b id="occTitle"></b><small class="jp" id="occJp"></small><p id="occText"></p></div>
+  </section>
+
   <section class="card hug" id="hugCard" hidden>
     <span class="big">🤗</span>
     <div style="flex:1"><span id="hugText"></span><small class="jp">ぎゅー！</small></div>
@@ -285,7 +294,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
   <section class="card panel-care" id="omikujiCard">
     <h2>Omikuji <span class="jp">おみくじ</span> <span class="new">NEW</span></h2>
     <p class="hint" id="omiHint">Once a day, Okame shakes the shrine box and draws your fortune. Collect all six!</p>
-    <button class="btn dark wide" id="omiBtn">🎋 Draw today's fortune</button>
+    <button class="btn dark wide" id="omiBtn">⛩️ Draw today's fortune</button>
     <div class="omikuji" id="omiResult" hidden>
       <div class="kanji jp" id="omiKanji">大吉</div>
       <div><b id="omiName">Great blessing</b><small class="jp" id="omiKana">だいきち</small><p id="omiText"></p></div>
@@ -552,6 +561,27 @@ function showHome(d) {
   $("homeJp").textContent = d === 0 ? "きょう かえってくるよ！🏠" : `おかえりまで あと${d}にち 🚢`;
 }
 
+// What today is, explained in a line: Okame decorates its screen for it.
+const OCCASIONS = {
+  birthday: ["🎂", "Happy birthday, Haruki!", "おたんじょうび おめでとう！", "Okame has cake on its screen today, all day."],
+  hina: ["🎎", "Hinamatsuri", "ひなまつり", "Okame put up the hina dolls on its screen."],
+  sakura: ["🌸", "Sakura season", "さくらの季節", "Petals are falling on Okame's screen until 10 April."],
+  kodomo: ["🎏", "Kodomo no Hi", "こどもの日", "A koinobori carp is flying over Okame today."],
+  tanabata: ["🎋", "Tanabata", "たなばた", "Two stars meet across the Milky Way tonight, once a year. Okame shows them meeting."],
+  halloween: ["🎃", "Halloween", "ハロウィン", "Boo! Okame found a pumpkin."],
+  sinterklaas: ["🎁", "Sinterklaas", "シンタクラース", "Belgium's St Nicholas feast: on the night of 5 December, children find sweets and presents in their shoes. Okame wears his mitre: DAG SINT means \"hello, Sint!\" in Flemish."],
+  christmas: ["🎄", "Merry Christmas", "メリークリスマス", "Okame has a little tree on its screen."],
+  yearend: ["🎍", "Ōmisoka", "よいお年を", "The last day of the year. Okame says YOI OTOSHI O!"],
+  newyear: ["🎍", "Happy New Year", "あけましておめでとう", "Okame put up a kadomatsu. AKEOME!"],
+  anniversary: ["💕", "A special day", "きねんび", "Okame remembers what today is."],
+};
+function showOccasion(o) {
+  const v = OCCASIONS[o];
+  $("occCard").hidden = !v;
+  if (!v) return;
+  [$("occIcon").textContent, $("occTitle").textContent, $("occJp").textContent, $("occText").textContent] = v;
+}
+
 let focusWas = -1;
 function showFocus(left, count) {
   const on = left >= 0;
@@ -598,6 +628,7 @@ function applyState(s) {
   showHome(s.homeDays);
   showWords(s.wordList);
   showWeather(s.wx);
+  showOccasion(s.occasion);
   showFocus(s.focusLeft ?? -1, s.focusCount || 0);
   showOmikuji(s.omikuji);
   $("omikujiCard").hidden = s.stage === "egg" || s.stage === "gone";
@@ -661,7 +692,7 @@ let lastGame = null, lastNote = -1;
 function showGame(g) {
   const starting = g && !lastGame;
   if (!g && lastGame && lastGame.type === "janken") toast(lastGame.wins > lastGame.losses ? "You beat Okame at janken! 🎉" : "Okame wins this time! Rematch? ✊");
-  else if (!g && lastGame && lastGame.type === "dance") toast(`You copied ${Math.max(0, lastGame.length - (lastGame.phase === "good" ? 0 : 1))} moves! ${lastGame.best >= 5 ? "Dancing queen 💃" : "♥"}`);
+  else if (!g && lastGame && lastGame.type === "dance") toast(`You copied ${lastGame.length - (lastGame.phase === "good" ? 0 : 1)} moves in a row! ${lastGame.length - (lastGame.phase === "good" ? 0 : 1) >= 5 ? "Dancing queen 💃" : "♥"} Best ${lastGame.best}`);
   else if (!g && lastGame) toast(lastGame.type === "rain" ? `${lastGame.score} seeds caught! ${lastGame.score > lastGame.best ? "New record! 🏆" : "♥"}` : lastGame.type === "duet" ? `Duet over: ${lastGame.wins}/${lastGame.rounds} rounds ♥` : `Found it ${lastGame.hits}/${lastGame.rounds} times ♥`);
   lastGame = g;
   $("gamePick").hidden = !!g;
@@ -763,8 +794,8 @@ $("focusStop").onclick = async () => { await api("/api/focus", { min: 0 }); toas
 $("omiBtn").onclick = async () => {
   ac();
   const r = await api("/api/omikuji", {});
-  if (!r.ok) return toast(r.error === "already drawn today" ? "One fortune a day! Come back tomorrow 🎋" : "Not now: Okame is busy or asleep.");
-  toast("Look at Okame: it's shaking the shrine box… 🎋");
+  if (!r.ok) return toast(r.error === "already drawn today" ? "One fortune a day! Come back tomorrow ⛩️" : "Not now: Okame is busy or asleep.");
+  toast("Look at Okame: it's shaking the shrine box… ⛩️");
   [0, 0.15, 0.3, 0.45].forEach((t) => chirp(1800 + Math.random() * 600, t, 0.07));
   setTimeout(refresh, 2600);
 };
@@ -808,8 +839,9 @@ function showWardrobe(s) {
   });
   $("giftBtn").disabled = !s.giftReady;
   $("giftBtn").textContent = s.giftReady ? "🎁 Open today's gift" : "🎁 Come back tomorrow for a new gift";
-  $("bestRain").textContent = (s.bestRain ? `· best ${s.bestRain}` : "") +
-    (s.rivalRain ? ` · Matthieu ${s.rivalRain}${(s.bestRain || 0) > s.rivalRain ? " 👑" : ""}` : "");
+  const lead = (s.bestRain || 0) - (s.rivalRain || 0);  // the crown sits next to whoever is ahead
+  $("bestRain").textContent = (s.bestRain ? `· best ${s.bestRain}${s.rivalRain && lead > 0 ? " 👑" : ""}` : "") +
+    (s.rivalRain ? ` · Matthieu ${s.rivalRain}${lead < 0 ? " 👑" : ""}` : "");
 }
 $("giftBtn").onclick = async () => {
   ac();
