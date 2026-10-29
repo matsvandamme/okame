@@ -107,12 +107,14 @@ class Janken {
   Hand bird() const { return bird_; }
   int last() const { return last_; }  // outcome of the throw on show
   bool won() const { return wins_ > losses_; }
+  bool timedOut() const { return timedOut_; }  // nobody threw: end quietly, no win or loss
   uint32_t phaseMs(uint32_t now) const { return now - t0_; }
 
  private:
   Rng rng_;
   Phase phase_ = Phase::Done;
   int wins_ = 0, losses_ = 0, throws_ = 0, last_ = 0;
+  bool timedOut_ = false;
   Hand you_ = Rock, bird_ = Rock;
   uint32_t t0_ = 0;
 };

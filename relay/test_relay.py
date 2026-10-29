@@ -131,8 +131,9 @@ async def t_weather_and_dates():
     await r.send_dates()
     check("dates go to the egg", queued("dates")[-1] == {"list": [{"m": 6, "d": 1, "kind": 1}], "who": "HANA"})
     sent.clear()
-    await r.birthdays(datetime(2027, 5, 31, 8, 0, tzinfo=r.TZ))
-    check("day before: heads-up to Matthieu only, with her age",
+    from datetime import date
+    await r.eve_reminders(date(2027, 6, 1))
+    check("the evening before: heads-up to Matthieu only, with her age",
           any("tomorrow" in t and "(27)" in t for t in said(MATTHIEU)) and not said(HARUKI))
     sent.clear()
     await r.birthdays(datetime(2027, 6, 1, 8, 0, tzinfo=r.TZ))
@@ -143,7 +144,7 @@ TESTS.append(t_weather_and_dates)
 async def t_catch():
     import random
     random.seed(1)
-    r.CATCH_WINDOW = 0.2
+    r.CATCH_WINDOW = 0.2  # (4.5 s in real life)
     r.device["state"] = {"fw": "0.4.0", "bestRain": 5}
     await r.handle(msg(MATTHIEU, "/catch"))
     g = r.catches[MATTHIEU]

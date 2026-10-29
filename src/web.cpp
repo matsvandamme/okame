@@ -142,6 +142,12 @@ String web::stateJson() {
   j += ",\"hug\":" + cloud::lastHugJson();
   j += ",\"homeDays\":" + String(app::ui.daysToHome(app::today()));
   j += ",\"wx\":" + cloud::weatherJson();
+  {
+    static const char* const OCC[] = {"", "hina", "sakura", "kodomo", "tanabata", "halloween", "sinterklaas",
+                                      "christmas", "newyear", "birthday", "anniversary", "home", "yearend"};
+    Date d = app::today();
+    j += ",\"occasion\":\"" + String(OCC[int(occasion(d, app::pet.extra()))]) + "\"";
+  }
   j += ",\"words\":" + String(app::pet.wordCount()) + ",\"wordList\":[";
   {
     bool firstWord = true;
@@ -313,7 +319,7 @@ void handleOmikuji(AsyncWebServerRequest* r) {
     Date d = app::today();
     Screen s = app::ui.screen();
     if (!d.y) return sendJson(r, 409, "{\"error\":\"no clock yet\"}");
-    if (s != Screen::Main && s != Screen::Anim) return sendJson(r, 409, "{\"error\":\"not now\"}");
+    if ((s != Screen::Main && s != Screen::Anim) || app::ui.onceAnim()) return sendJson(r, 409, "{\"error\":\"not now\"}");
     g = app::pet.drawOmikuji(civil(d), esp_random());
     if (g >= 0) app::ui.showOmikuji(g, millis());
   }

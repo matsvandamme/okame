@@ -154,14 +154,17 @@ void Ui::update(const Env& env) {
   // Events from state changes.
   if (lastStage_ == Stage::Egg && s.stage == Stage::Chick) startAnim(Anim::Hatch, now);
   lastStage_ = s.stage;
-  if (env.online && !lastOnline_ && s.stage != Stage::Egg && s.stage != Stage::Gone)
+  if (env.online && !lastOnline_ && s.stage != Stage::Egg && s.stage != Stage::Gone && screen_ != Screen::Focus &&
+      !inGame())
     startAnim(Anim::Greet, now);
   lastOnline_ = env.online;
 
   // Screens that override everything else.
   Screen forced = baseScreen(env);
-  if (forced == Screen::Ota || forced == Screen::Pair || forced == Screen::Gone ||
-      forced == Screen::Setup || forced == Screen::Sleep) {
+  // A Wi-Fi blip doesn't end a focus session or a game: they run on the dongle's own clock.
+  bool ride = forced == Screen::Sleep && (screen_ == Screen::Focus || inGame());
+  if (!ride && (forced == Screen::Ota || forced == Screen::Pair || forced == Screen::Gone ||
+                forced == Screen::Setup || forced == Screen::Sleep)) {
     if (screen_ != forced && !(screen_ == Screen::Anim && anim_ == Anim::Hatch)) {
       screen_ = forced;
       t0_ = now;
@@ -228,8 +231,12 @@ void Ui::update(const Env& env) {
     case Screen::Janken:
       janken_.update(now);
       if (janken_.phase() == Janken::Phase::Done) {
-        pet_.recordJanken(janken_.won());
-        finishGame(janken_.won(), env);
+        if (janken_.timedOut()) {
+          screen_ = forced;
+        } else {
+          pet_.recordJanken(janken_.won());
+          finishGame(janken_.won(), env);
+        }
       }
       break;
     case Screen::Dance:
@@ -493,7 +500,7 @@ void Ui::daily(const Env& env) {
     dirty_ = true;
   }
   occ_ = occasion(env.today, pet_.extra());
-  snprintf(newYear_, sizeof newYear_, "%u", env.today.m == 1 ? env.today.y : env.today.y + 1);
+  snprintf(newYear_, sizeof newYear_, "%u", env.today.y);
   if (first && occ_ != Occasion::None) {  // today's greeting; the countdown card follows a little later
     nextCard_ = now + 20000;
     startAnim(Anim::Occasion, now);
@@ -1111,11 +1118,13 @@ void Ui::drawRain(const Env& env) {
   snprintf(buf, sizeof buf, "%d", r.score());
   frame_.text(buf, 1, 1);
   int rival = pet_.extra().rivalRain;
-  if (rival && r.score() <= rival) {  // Matthieu's Feather Catch score, to beat
-    snprintf(buf, sizeof buf, "VS%d", rival);
+  if (rival && env.nowMs - t0_ < 1600) {  // the first moments: Matthieu's Feather Catch score to beat
+    snprintf(buf, sizeof buf, "BEAT %d", rival);
+    frame_.fillRect(5, 0, 30, 7, false);
     frame_.textCentered(buf, 1);
   }
-  for (int i = 0; i < r.lives(); i++) frame_.sprite(spr::heart_s, LCD_W - 4 - i * 4, 0);
+  if (!(rival && env.nowMs - t0_ < 1600))  // lives, once the intro has gone
+    for (int i = 0; i < r.lives(); i++) frame_.sprite(spr::heart_s, LCD_W - 4 - i * 4, 0);
 }
 
 void Ui::drawLights(const Env& env) {
@@ -1263,7 +1272,8 @@ void Ui::drawDecor(const Env& env, int bx, int by, bool flip) {
     case Occasion::Birthday: frame_.sprite(spr::cake, LCD_W - 12, LCD_H - 7); break;
     case Occasion::Christmas: frame_.sprite(spr::tree, LCD_W - 10, LCD_H - 9); break;
     case Occasion::Halloween: frame_.sprite(spr::pumpkin, LCD_W - 10, LCD_H - 6); break;
-    case Occasion::NewYear: frame_.sprite(spr::kadomatsu, LCD_W - 10, LCD_H - 9); break;
+    case Occasion::NewYear:
+    case Occasion::YearEnd: frame_.sprite(spr::kadomatsu, LCD_W - 10, LCD_H - 9); break;
     case Occasion::Kodomo: frame_.sprite(spr::koi, LCD_W - 14 + (alt ? 1 : 0), 1); break;
     case Occasion::Tanabata: frame_.sprite(spr::star, LCD_W - 9, alt ? 1 : 2); break;
     case Occasion::Sinterklaas: frame_.sprite(spr::mitre, LCD_W - 9, 1); break;
@@ -1281,7 +1291,7 @@ void Ui::drawOccasionAnim(uint32_t el) {
   const char* b = "";
   const Sprite* icon = nullptr;
   switch (occ_) {
-    case Occasion::Birthday: a = "HAPPY"; b = "BIRTHDAY"; icon = &spr::cake; break;
+    case Occasion::Birthday: a = "HAPPY"; b = "B-DAY!"; icon = &spr::cake; break;
     case Occasion::Anniversary: a = "OUR"; b = "DAY \x01"; icon = &spr::heart; break;
     case Occasion::Hina: a = "HINA"; b = "MATSURI"; icon = &spr::hina; break;
     case Occasion::Sakura: a = "SAKURA"; b = "SEASON"; icon = &spr::hat_sakura; break;
@@ -1291,12 +1301,24 @@ void Ui::drawOccasionAnim(uint32_t el) {
     case Occasion::Sinterklaas: a = "DAG"; b = "SINT!"; icon = &spr::mitre; break;
     case Occasion::Christmas: a = "MERRY"; b = "XMAS!"; icon = &spr::tree; break;
     case Occasion::NewYear: a = "AKEOME!"; b = newYear_; icon = &spr::kadomatsu; break;
+    case Occasion::YearEnd: a = "YOI"; b = "OTOSHI O!"; icon = &spr::kadomatsu; break;
     default: break;
+  }
+  if (occ_ == Occasion::Tanabata && el >= 2600) {
+    // Orihime and Hikoboshi, two stars kept apart by the Milky Way, cross it to meet once a year.
+    for (int x = 0; x < LCD_W; x += 2) frame_.set(x + ((x / 2) % 2), 9 + ((x * 7) % 3), true);
+    int t = (int)(el - 2600) / 120, d = t < 14 ? 14 - t : 0;
+    frame_.sprite(spr::star, 4 + 14 - d, 2);
+    frame_.sprite(spr::star, LCD_W - 9 - 14 + d, 13);
+    if (!d) frame_.sprite(spr::heart_s, 18, 7);
+    return;
   }
   if (el < 2600) {  // the words, the second line in the special case of a birthday name
     frame_.textCentered(a, 1, Frame::textWidth(a, 2) <= LCD_W ? 2 : 1);
     const char* who = pet_.extra().who;
-    frame_.textCentered(occ_ == Occasion::Birthday && el > 1300 && who[0] ? who : b, 13);
+    char name[16];
+    snprintf(name, sizeof name, "%s!", who);
+    frame_.textCentered(occ_ == Occasion::Birthday && el > 1300 && who[0] ? name : b, 13);
     return;
   }
   // Then the bird celebrates next to the day's picture.

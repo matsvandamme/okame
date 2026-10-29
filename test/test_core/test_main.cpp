@@ -332,6 +332,44 @@ void test_dance_copy_grows_and_mistake_ends() {
   TEST_ASSERT_EQUAL(3, d.score());
 }
 
+void test_occasions() {
+  PetExtra x{};
+  x.dates[0] = {6, 1, 1};
+  TEST_ASSERT_EQUAL(Occasion::Birthday, occasion({2027, 6, 1}, x));
+  TEST_ASSERT_EQUAL(Occasion::YearEnd, occasion({2026, 12, 31}, x));  // no あけおめ before midnight
+  TEST_ASSERT_EQUAL(Occasion::NewYear, occasion({2027, 1, 1}, x));
+  TEST_ASSERT_EQUAL(Occasion::NewYear, occasion({2027, 1, 3}, x));
+  TEST_ASSERT_EQUAL(Occasion::None, occasion({2027, 1, 4}, x));
+  TEST_ASSERT_EQUAL(Occasion::Sinterklaas, occasion({2026, 12, 5}, x));
+  TEST_ASSERT_EQUAL(Occasion::Sakura, occasion({2027, 4, 10}, x));
+  TEST_ASSERT_EQUAL(Occasion::None, occasion({0, 0, 0}, x));
+}
+
+void test_focus_survives_a_wifi_blip() {
+  Pet p = hatched();
+  Ui ui(p);
+  Env e;
+  e.online = true;
+  e.epoch = T0 + HATCH_AFTER;
+  e.nowMs = 1000;
+  ui.update(e);
+  TEST_ASSERT_TRUE(ui.startFocus(1, e.nowMs));
+  e.online = false;  // the router hiccups
+  for (int i = 0; i < 20; i++) { e.nowMs += 1000; ui.update(e); }
+  TEST_ASSERT_EQUAL(Screen::Focus, ui.screen());
+  e.online = true;
+  for (int i = 0; i < 45; i++) { e.nowMs += 1000; ui.update(e); }
+  TEST_ASSERT_EQUAL(1, p.extra().focusCount);
+  TEST_ASSERT_EQUAL(1, ui.takeFocusDone());
+}
+
+void test_janken_timeout_is_not_a_loss() {
+  Janken j;
+  j.start(1, 0);
+  j.update(Janken::TIMEOUT_MS + 1);
+  TEST_ASSERT_TRUE(j.timedOut());
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_egg_hatches_after_two_minutes);
@@ -362,5 +400,8 @@ int main() {
   RUN_TEST(test_janken_ends_at_two_wins);
   RUN_TEST(test_janken_times_out);
   RUN_TEST(test_dance_copy_grows_and_mistake_ends);
+  RUN_TEST(test_occasions);
+  RUN_TEST(test_focus_survives_a_wifi_blip);
+  RUN_TEST(test_janken_timeout_is_not_a_loss);
   return UNITY_END();
 }

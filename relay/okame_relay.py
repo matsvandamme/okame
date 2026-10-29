@@ -857,16 +857,23 @@ def special_today(day):
     return [d for d in CFG.get("dates", []) if d.get("m") == day.month and d.get("d") == day.day]
 
 
-async def birthdays(now):
-    """The evening before: a heads-up for Matthieu. On the day: wishes for everyone."""
-    from datetime import timedelta
-    tomorrow = now.date() + timedelta(days=1)
+async def eve_reminders(tomorrow):
+    """The evening before a birthday: a heads-up for Matthieu, with time to send a note for the morning."""
     for d in special_today(tomorrow):
         if d.get("kind") == 1:
             age = f" ({tomorrow.year - d['year']})" if d.get("year") else ""
             for p in partners():
-                await say(p["chat_id"], f"🎂 Psst… tomorrow is {esc(d.get('who', ''))}'s birthday{age}! "
-                                        "I'll throw a party on her screen in the morning. Maybe send a /note too? 💌")
+                await say(p["chat_id"], f"🎂 Psst… tomorrow is {esc(d.get('who', ''))}'s birthday{age}! I'll throw a "
+                                        "party on her screen in the morning. Send a /note tonight so it's waiting there 💌")
+
+
+async def birthdays(now):
+    """On the day: wishes for everyone (Matthieu's heads-up comes the evening before, see eve_reminders)."""
+    if (now.month, now.day) == (7, 7):
+        for u in users():
+            await say(u["chat_id"], "🎋 Today is Tanabata. Orihime and Hikoboshi, two stars kept apart by the Milky Way, "
+                                    "cross it to meet tonight, once a year. Some couples are kept apart by a sea… "
+                                    "but they get a lot more than once a year 💛 Look at my screen ✨")
     for d in special_today(now.date()):
         if d.get("kind") == 1:
             for u in users():
@@ -886,7 +893,8 @@ async def focus_done(e):
 # Matthieu's side of the Seed Rain duel, played with inline buttons: a seed appears in one of five slots; tap it
 # within the window. Same scoring as Seed Rain (golden = 3, three lives), about as long (15 rounds of up to 3 s).
 
-CATCH_ROUNDS, CATCH_LIVES, CATCH_WINDOW, CATCH_GOLDEN = 15, 3, 3.0, 0.15
+# The window is generous because a ship's satellite link can take a second or two each way.
+CATCH_ROUNDS, CATCH_LIVES, CATCH_WINDOW, CATCH_GOLDEN = 15, 3, 4.5, 0.15
 catches = {}  # chat id -> the game in progress
 
 
@@ -914,6 +922,7 @@ async def catch_start(chat, name):
     catch_new_round(g)
     res = await tg("sendMessage", chat_id=chat, text=catch_text(g), parse_mode="HTML", reply_markup=catch_board(g))
     g["msg"] = (res.get("result") or {}).get("message_id")
+    g["shown"] = time.time()  # the clock starts once the board is on its way to his phone
     catches[chat] = g
     asyncio.create_task(safe(catch_timeout(g, 0)))
 
@@ -925,6 +934,7 @@ async def catch_timeout(g, rnd):
 
 
 async def on_callback(cq):
+    arrived = time.time()  # judge the tap by when it reached us, not after our own reply round-trip
     await tg("answerCallbackQuery", callback_query_id=cq["id"])
     parts = (cq.get("data") or "").split(":")
     if len(parts) != 4 or parts[0] != "catch":
@@ -932,7 +942,7 @@ async def on_callback(cq):
     g = catches.get((cq.get("message") or {}).get("chat", {}).get("id"))
     if not g or g["id"] != parts[1] or int(parts[2]) != g["round"] or g["busy"]:
         return
-    late = time.time() - g["shown"] > CATCH_WINDOW + 0.3
+    late = arrived - g["shown"] > CATCH_WINDOW + 0.3
     hit = int(parts[3]) == g["col"] and not late
     await catch_resolve(g, hit, "💨 Too slow!" if late else "")
 
@@ -951,6 +961,7 @@ async def catch_resolve(g, hit, note=""):
     catch_new_round(g)
     await tg("editMessageText", chat_id=g["chat"], message_id=g["msg"], text=catch_text(g, note), parse_mode="HTML",
              reply_markup=catch_board(g))
+    g["shown"] = time.time()
     asyncio.create_task(safe(catch_timeout(g, g["round"])))
 
 
@@ -1059,10 +1070,7 @@ async def mornings():
         if now.hour == 20 and kv_get("evening", "") != now.date().isoformat():
             kv_set("evening", now.date().isoformat())
             from datetime import timedelta
-            if any(d.get("kind") == 1 for d in special_today(now.date() + timedelta(days=1))):
-                for p in partners():
-                    await say(p["chat_id"], "🎂 Reminder: tomorrow is Haruki's birthday! "
-                                            "Set up a /note tonight so it's waiting on my screen in the morning 💌")
+            await eve_reminders(now.date() + timedelta(days=1))
         await asyncio.sleep(60)
 
 

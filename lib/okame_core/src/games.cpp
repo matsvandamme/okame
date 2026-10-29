@@ -189,6 +189,7 @@ int Janken::outcome(Hand you, Hand bird) {
 void Janken::start(uint32_t seed, uint32_t now) {
   rng_ = Rng(seed);
   wins_ = losses_ = throws_ = last_ = 0;
+  timedOut_ = false;
   phase_ = Phase::Chant;
   t0_ = now;
 }
@@ -197,6 +198,7 @@ void Janken::update(uint32_t now) {
   uint32_t el = now - t0_;
   if (phase_ == Phase::Chant && el >= TIMEOUT_MS) {
     phase_ = Phase::Done;  // nobody threw: the bird wanders off
+    timedOut_ = true;
   } else if (phase_ == Phase::Reveal && el >= REVEAL_MS) {
     bool over = wins_ >= TO_WIN || losses_ >= TO_WIN || throws_ >= MAX_THROWS;
     phase_ = over ? Phase::Done : Phase::Chant;

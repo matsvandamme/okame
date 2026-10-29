@@ -64,7 +64,7 @@ struct Date {
 int32_t civil(Date d);  // days since 1970-01-01
 
 enum class Occasion : uint8_t { None, Hina, Sakura, Kodomo, Tanabata, Halloween, Sinterklaas, Christmas, NewYear,
-                                Birthday, Anniversary, HomeDay };
+                                Birthday, Anniversary, HomeDay, YearEnd };
 
 struct PetExtra;
 // What today is: a public holiday or season, or one of the private dates the relay sent (birthday first).
