@@ -41,6 +41,41 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .logo { font-weight: 900; font-size: 30px; letter-spacing: 1px; }
 .logo small { display: block; font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .75; }
 .jp { font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", var(--font); }
+.head-right { display: flex; align-items: center; gap: 8px; }
+.love { width: 38px; height: 38px; border-radius: 50%; border: 3px solid var(--ink); background: #fff; font-size: 18px;
+  line-height: 1; padding: 0; box-shadow: 0 3px 0 var(--ink); cursor: pointer; }
+.love:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.love.sent { animation: pop .5s ease; }
+.new { font-size: 10px; font-weight: 900; background: #E8484F; color: #fff; border-radius: 6px; padding: 1px 5px;
+  vertical-align: 2px; letter-spacing: .5px; }
+.hand { font-size: 26px; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.hand small { font-size: 12px; font-weight: 800; }
+.dance { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.omikuji { display: flex; gap: 14px; align-items: center; margin-top: 12px; }
+.omikuji .kanji { font-size: 40px; font-weight: 900; writing-mode: vertical-rl; background: #fff; border: 3px solid var(--ink);
+  border-radius: 10px; padding: 8px 4px; color: #C62828; min-height: 96px; text-align: center; }
+.omikuji small { display: block; opacity: .65; font-weight: 700; }
+.omikuji p { margin: 6px 0 0; }
+.omiset { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.omiset span { border: 2px dashed var(--ink); border-radius: 8px; padding: 2px 6px; font-weight: 900; opacity: .35; }
+.omiset span.got { border-style: solid; opacity: 1; background: #fff; color: #C62828; }
+#focusLive { align-items: center; }
+#focusNum { font-weight: 900; font-size: 34px; flex: 1; font-variant-numeric: tabular-nums; }
+.countdown { display: flex; align-items: center; gap: 14px; }
+.countdown .num { font-weight: 900; font-size: 44px; line-height: 1; min-width: 64px; text-align: center; background: var(--ink); color: var(--yellow);
+  border-radius: 14px; padding: 8px 6px; }
+.countdown small { display: block; margin-top: 4px; opacity: .65; font-weight: 700; }
+.hug { flex-wrap: wrap; }
+.hug #hugBack { flex-basis: 100%; }
+.hug small { display: block; opacity: .65; font-weight: 700; }
+.btn.small { padding: 8px 10px; font-size: 13px; width: auto; flex: 0 0 auto; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 3px solid var(--ink); border-radius: 99px; background: #fff; padding: 6px 12px; font-weight: 900;
+  font-size: 14px; box-shadow: 0 3px 0 var(--ink); cursor: pointer; }
+.chip.learning { border-style: dashed; box-shadow: none; }
+.chip:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.hug { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+.hug .big { font-size: 28px; }
 .pill { font-size: 12px; font-weight: 800; background: var(--ink); color: var(--yellow); padding: 4px 10px; border-radius: 99px; }
 
 /* The little screen your bird lives on, framed like a pocket handheld. */
@@ -152,7 +187,10 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 <main>
   <header>
     <div class="logo">Okame<small class="jp">オカメ · POCKET COCKATIEL</small></div>
-    <span class="pill" id="online"><span class="dot"></span>…</span>
+    <div class="head-right">
+      <button class="love" id="loveBtn" aria-label="Send Matthieu a heart">💛</button>
+      <span class="pill" id="online"><span class="dot"></span>…</span>
+    </div>
   </header>
 
   <div class="banner" id="setupBanner" hidden>Setup mode: add your home Wi-Fi under <b>Settings</b> so your bird can wake up there.</div>
@@ -163,6 +201,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="status">
       <span>Food <span class="hearts" id="food">♡♡♡♡</span></span>
       <span>Joy <span class="hearts" id="joy">♡♡♡♡</span></span>
+      <span id="wxChip" hidden></span>
     </div>
   </section>
 
@@ -170,6 +209,23 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <h2>Name your bird <span class="jp">なまえ</span></h2>
     <p class="hint">Your chick has hatched! What would you like to call it?</p>
     <div class="row"><input type="text" id="nameInput" maxlength="16" autocomplete="off" placeholder="e.g. Mochi"><button class="btn dark" id="nameBtn" style="flex:0 0 auto">Save</button></div>
+  </section>
+
+  <section class="card countdown" id="homeCard" hidden>
+    <div class="num" id="homeNum">12</div>
+    <div><b id="homeLine">days until Matthieu is home</b><small class="jp" id="homeJp">おかえりまで あと12にち 🚢</small></div>
+  </section>
+
+  <section class="card hug" id="hugCard" hidden>
+    <span class="big">🤗</span>
+    <div style="flex:1"><span id="hugText"></span><small class="jp">ぎゅー！</small></div>
+    <button class="btn small" id="hugBack">💛 Send one back</button>
+  </section>
+
+  <section class="card words" id="wordsCard" hidden>
+    <h2>Okame can say… <span class="new">NEW</span> <span class="jp">ことば</span></h2>
+    <p class="hint">Matthieu taught these. Tap one and Okame says it on its screen.</p>
+    <div class="chips" id="wordChips"></div>
   </section>
 
   <section class="card letter" id="noteCard" hidden>
@@ -195,12 +251,16 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 
   <section class="card panel-care" id="playCard">
     <h2>Play <span class="jp">あそぶ</span></h2>
-    <p class="hint" id="playHint">Duet: listen and whistle the melody back. Peekaboo: tap Peek! when it pops out. Seed Rain: catch the falling seeds!</p>
+    <p class="hint" id="playHint">Duet: whistle the melody back. Peekaboo: tap when it pops out. Seed Rain: catch the seeds! Janken: best of three. Dance: copy Okame's moves.</p>
     <div id="gamePick" class="row">
       <button class="btn" id="startDuet">🎵 Whistle duet</button>
       <button class="btn" id="startPeek">🌳 Peekaboo</button>
     </div>
     <button class="btn wide" id="startRain" style="margin-top:8px">🌧️ Seed Rain <small id="bestRain" style="opacity:.6"></small></button>
+    <div class="row" id="gamePick2" style="margin-top:8px">
+      <button class="btn" id="startJanken">✊ Janken <span class="new">NEW</span></button>
+      <button class="btn" id="startDance">💃 Copy the dance <span class="new">NEW</span></button>
+    </div>
     <div id="gameLive" hidden>
       <canvas class="lcd mini" id="lcdMini" width="160" height="80"></canvas>
       <p class="hint" id="gameHint">…</p>
@@ -210,7 +270,41 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
       </div>
       <button class="btn dark pad wide" id="padPeek">Peek!</button>
       <div class="row" id="rainPad"><button class="btn pad" id="padLeft">◀</button><button class="btn pad" id="padRight">▶</button></div>
+      <div class="row" id="jankenPad">
+        <button class="btn pad hand" data-p="rock">✊<small>グー</small></button>
+        <button class="btn pad hand" data-p="scissors">✌️<small>チョキ</small></button>
+        <button class="btn pad hand" data-p="paper">✋<small>パー</small></button>
+      </div>
+      <div class="dance" id="dancePad">
+        <button class="btn pad" data-p="left">◀ step</button><button class="btn pad" data-p="right">step ▶</button>
+        <button class="btn pad" data-p="hop">⤴ hop</button><button class="btn pad" data-p="bow">🙇 bow</button>
+      </div>
     </div>
+  </section>
+
+  <section class="card panel-care" id="omikujiCard">
+    <h2>Omikuji <span class="jp">おみくじ</span> <span class="new">NEW</span></h2>
+    <p class="hint" id="omiHint">Once a day, Okame shakes the shrine box and draws your fortune. Collect all six!</p>
+    <button class="btn dark wide" id="omiBtn">🎋 Draw today's fortune</button>
+    <div class="omikuji" id="omiResult" hidden>
+      <div class="kanji jp" id="omiKanji">大吉</div>
+      <div><b id="omiName">Great blessing</b><small class="jp" id="omiKana">だいきち</small><p id="omiText"></p></div>
+    </div>
+    <div class="omiset" id="omiSet" aria-label="Fortunes collected"></div>
+  </section>
+
+  <section class="card panel-care" id="focusCard">
+    <h2>Focus with Okame <span class="new">NEW</span> <span class="jp">いっしょにがんばろう</span></h2>
+    <p class="hint" id="focusHint">Studying or working? Okame sits by its little laptop and works along with you. Notes wait until you're done.</p>
+    <div class="row" id="focusPick">
+      <button class="btn" data-min="25">📚 25 min</button>
+      <button class="btn" data-min="50">💻 50 min</button>
+    </div>
+    <div class="row" id="focusLive" hidden>
+      <div class="num" id="focusNum">25:00</div>
+      <button class="btn" id="focusStop">Stop</button>
+    </div>
+    <p class="hint" id="focusDone" style="margin-top:8px"></p>
   </section>
 
   <section class="card panel-care" id="wardCard">
@@ -416,6 +510,69 @@ function showNote(m) {
   $("noteTr").textContent = m.translation || "";
 }
 
+function ago(at) {
+  const s = at > 1700000000 ? Math.max(0, Date.now() / 1000 - at) : -1;
+  return s < 0 ? "" : s < 3600 ? "just now" : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
+}
+// A hug from Telegram stays on the page for a day.
+function showHug(h) {
+  const fresh = h && h.at > 1700000000 && Date.now() / 1000 - h.at < 86400;
+  $("hugCard").hidden = !fresh;
+  if (fresh) $("hugText").textContent = `${title(h.from) || "Someone"} sent you a hug · ${ago(h.at)}`;
+}
+function title(s) { return (s || "").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()); }
+let wordsKey = "";
+function showWords(list) {
+  const key = JSON.stringify(list || []);
+  $("wordsCard").hidden = !(list && list.length);
+  if (key === wordsKey) return;
+  wordsKey = key;
+  $("wordChips").innerHTML = "";
+  (list || []).forEach((w) => {
+    const b = document.createElement("button");
+    b.className = "chip" + (w.learning ? " learning" : "");
+    b.textContent = w.learning ? `${w.t.slice(0, Math.max(1, Math.ceil(w.t.length / 2)))}…? (practising)` : w.t;
+    b.onclick = async () => {
+      const r = await api("/api/say", { w: w.t });
+      if (r.ok) {
+        happyChirp();
+        toast(`Okame is saying ${w.t} ✨`);
+        document.querySelector(".device").scrollIntoView({ behavior: "smooth", block: "start" });
+      } else toast("Okame is busy right now. Try again in a moment.");
+    };
+    $("wordChips").appendChild(b);
+  });
+}
+
+function showHome(d) {
+  $("homeCard").hidden = !(d >= 0);
+  if (!(d >= 0)) return;
+  $("homeNum").textContent = d === 0 ? "🏠" : d;
+  $("homeLine").textContent = d === 0 ? "Matthieu comes home today!" : d === 1 ? "day until Matthieu is home" : "days until Matthieu is home";
+  $("homeJp").textContent = d === 0 ? "きょう かえってくるよ！🏠" : `おかえりまで あと${d}にち 🚢`;
+}
+
+let focusWas = -1;
+function showFocus(left, count) {
+  const on = left >= 0;
+  $("focusPick").hidden = on;
+  $("focusLive").hidden = !on;
+  $("focusHint").hidden = on;
+  if (on) $("focusNum").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  if (focusWas > 0 && focusWas < 15 && !on) {  // just finished
+    [0, 0.12, 0.24].forEach((t, i) => chirp(2200 + i * 350, t, 0.12));
+    toast("Done! Time for a break, and a scritch for Okame 🥰");
+  }
+  focusWas = on ? left : -1;
+  const next = 10 - (count % 10);
+  $("focusDone").textContent = count ? `${count} session${count === 1 ? "" : "s"} together · ${next === 10 ? "headband earned! 🎌" : `${next} more for a study headband 🎌`}` : "Ten sessions together earn Okame a study headband 🎌";
+}
+const WX = { rain: "☔", snow: "❄️", hot: "🥵", cold: "🥶", clear: "🌤️" };
+function showWeather(w) {
+  $("wxChip").hidden = !w || !w.kind;
+  if (w && w.kind) $("wxChip").textContent = `${WX[w.kind] || ""} ${w.temp}°${w.place ? " " + w.place : ""}`;
+}
+
 function applyState(s) {
   if (s.page && PAGE !== "dev" && s.page !== PAGE) { location.reload(); return; }
   state = s;
@@ -437,6 +594,13 @@ function applyState(s) {
   $("playCard").hidden = s.stage === "egg" || s.stage === "gone";
   $("wardCard").hidden = s.stage === "egg" || s.stage === "gone";
   showNote(s.msg);
+  showHug(s.hug);
+  showHome(s.homeDays);
+  showWords(s.wordList);
+  showWeather(s.wx);
+  showFocus(s.focusLeft ?? -1, s.focusCount || 0);
+  showOmikuji(s.omikuji);
+  $("omikujiCard").hidden = s.stage === "egg" || s.stage === "gone";
   showWardrobe(s);
   showGame(s.game);
   $("nameCard").hidden = !!s.name || s.stage === "egg" || s.stage === "gone";
@@ -488,19 +652,29 @@ const GAME_TEXT = {
           won: "Perfect duet! ♥", lost: "Oops, not quite.", done: "" },
   peek: { hidden: "It's hiding behind the tree… watch the screen!", peeking: "NOW! Tap Peek!", hit: "Found you! ♥",
           miss: "Too slow (or too early).", done: "" },
+  janken: { chant: "Jan… ken… pick your hand!", reveal: "", done: "" },
+  dance: { showing: "Watch Okame dance…", listening: "Your turn! Copy the moves.", good: "Perfect! One more move…",
+           fail: "Oops! Wrong move.", done: "" },
 };
+const HAND_EMOJI = { rock: "✊", scissors: "✌️", paper: "✋" };
 let lastGame = null, lastNote = -1;
 function showGame(g) {
   const starting = g && !lastGame;
-  if (!g && lastGame) toast(lastGame.type === "rain" ? `${lastGame.score} seeds caught! ${lastGame.score > lastGame.best ? "New record! 🏆" : "♥"}` : lastGame.type === "duet" ? `Duet over: ${lastGame.wins}/${lastGame.rounds} rounds ♥` : `Found it ${lastGame.hits}/${lastGame.rounds} times ♥`);
+  if (!g && lastGame && lastGame.type === "janken") toast(lastGame.wins > lastGame.losses ? "You beat Okame at janken! 🎉" : "Okame wins this time! Rematch? ✊");
+  else if (!g && lastGame && lastGame.type === "dance") toast(`You copied ${Math.max(0, lastGame.length - (lastGame.phase === "good" ? 0 : 1))} moves! ${lastGame.best >= 5 ? "Dancing queen 💃" : "♥"}`);
+  else if (!g && lastGame) toast(lastGame.type === "rain" ? `${lastGame.score} seeds caught! ${lastGame.score > lastGame.best ? "New record! 🏆" : "♥"}` : lastGame.type === "duet" ? `Duet over: ${lastGame.wins}/${lastGame.rounds} rounds ♥` : `Found it ${lastGame.hits}/${lastGame.rounds} times ♥`);
   lastGame = g;
   $("gamePick").hidden = !!g;
+  $("gamePick2").hidden = !!g;
+  $("startRain").hidden = !!g;
   $("gameLive").hidden = !g;
   $("playHint").hidden = !!g;
   if (!g) return;
   if (frameHex) drawLcd($("lcdMini").getContext("2d"), frameHex);
   if (starting && !$("tab-care").hidden) requestAnimationFrame(() => $("playCard").scrollIntoView({ behavior: "smooth", block: "end" }));
-  const score = g.type === "rain" ? `Score ${g.score} · ${"♥".repeat(g.lives)} · best ${g.best}`
+  const score = g.type === "janken" ? `You ${g.wins} · Okame ${g.losses}` + (g.phase === "reveal" ? `  ${HAND_EMOJI[g.you]} vs ${HAND_EMOJI[g.bird]} ${g.result > 0 ? "You win!" : g.result < 0 ? "Okame wins!" : "Aiko! Again!"}` : "")
+    : g.type === "dance" ? `${g.length} moves · best ${g.best}` + (g.phase === "listening" ? "  " + "●".repeat(g.entered) + "○".repeat(Math.max(0, g.length - g.entered)) : "")
+    : g.type === "rain" ? `Score ${g.score} · ${"♥".repeat(g.lives)} · best ${g.best}`
     : g.type === "duet" ? `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · wins ${g.wins}` : `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · found ${g.hits}`;
   if (g.type === "duet" && g.phase === "showing" && g.notes && g.showing >= 0 && g.showing !== lastNote) {
     const long = g.notes[g.showing] === "L";  // whistle along with the egg
@@ -513,7 +687,10 @@ function showGame(g) {
   $("duetPad").hidden = g.type !== "duet";
   $("padPeek").hidden = g.type !== "peek";
   $("rainPad").hidden = g.type !== "rain";
-  const live = g.type === "rain" || (g.type === "duet" ? g.phase === "listening" : (g.phase === "hidden" || g.phase === "peeking"));
+  $("jankenPad").hidden = g.type !== "janken";
+  $("dancePad").hidden = g.type !== "dance";
+  const live = g.type === "rain" || (g.type === "janken" ? g.phase === "chant" : g.type === "dance" ? g.phase === "listening" :
+    g.type === "duet" ? g.phase === "listening" : (g.phase === "hidden" || g.phase === "peeking"));
   document.querySelectorAll(".pad").forEach((b) => b.disabled = !live);
 }
 async function startGame(g) {
@@ -540,6 +717,57 @@ async function gameInput(p) {
 $("startDuet").onclick = () => startGame("duet");
 $("startPeek").onclick = () => startGame("peek");
 $("startRain").onclick = () => startGame("rain");
+$("startJanken").onclick = () => startGame("janken");
+$("startDance").onclick = () => startGame("dance");
+document.querySelectorAll("#jankenPad .pad, #dancePad .pad").forEach((b) => b.onclick = () => { chirp(2600, 0, 0.09); gameInput(b.dataset.p); });
+
+// ---------- omikuji ----------
+const OMIKUJI = [
+  ["大吉", "Great blessing", "だいきち", ["Everything you start today will go well. Okame is dancing for you!", "A wonderful surprise is on its way to you.", "Today is the perfect day for the thing you've been putting off."]],
+  ["中吉", "Middle blessing", "ちゅうきち", ["Good news is coming from far away, maybe from the sea 🌊", "Your kindness comes back to you twice today.", "A little treat for yourself is well deserved."]],
+  ["小吉", "Small blessing", "しょうきち", ["Little joys add up: a warm drink, a good song, a scritch.", "Patience pays off this week.", "Someone is thinking of you right now."]],
+  ["吉", "Blessing", "きち", ["A calm, steady day. Perfect for resting and tidying up.", "Keep going: you're closer than you think.", "Share a smile; it will travel far."]],
+  ["末吉", "Future blessing", "すえきち", ["Luck is slowly growing, like a seed. Keep watering it!", "The best part of this week is still coming.", "Small steps today, big steps later."]],
+  ["凶", "Bad luck", "きょう", ["At a shrine you'd tie a bad fortune to a branch and leave it behind. Okame just did! 🎋", "Tomorrow's fortune is already better. Okame says: don't worry.", "Even rainy days end. Time for a hug 🤗"]],
+];
+function showOmikuji(o) {
+  if (!o) return;
+  const g = o.today;
+  $("omiBtn").hidden = g >= 0;
+  $("omiHint").hidden = g >= 0;
+  $("omiResult").hidden = !(g >= 0);
+  if (g >= 0) {
+    const [k, en, kana, lines] = OMIKUJI[g];
+    $("omiKanji").textContent = k;
+    $("omiName").textContent = en;
+    $("omiKana").textContent = kana;
+    $("omiText").textContent = lines[Math.abs(o.day) % lines.length] + " Come back tomorrow for a new one.";
+  }
+  $("omiSet").innerHTML = "";
+  OMIKUJI.forEach(([k], i) => {
+    const s = document.createElement("span");
+    s.className = "jp" + (o.seen & (1 << i) ? " got" : "");
+    s.textContent = k;
+    $("omiSet").appendChild(s);
+  });
+}
+document.querySelectorAll("#focusPick .btn").forEach((b) => b.onclick = async () => {
+  ac();
+  const r = await api("/api/focus", { min: b.dataset.min });
+  if (!r.ok) return toast("Not now: Okame is busy, asleep or still an egg.");
+  happyChirp();
+  toast(`Let's focus for ${b.dataset.min} minutes. がんばろう！`);
+  refresh();
+});
+$("focusStop").onclick = async () => { await api("/api/focus", { min: 0 }); toast("Stopped. Good effort ♥"); refresh(); };
+$("omiBtn").onclick = async () => {
+  ac();
+  const r = await api("/api/omikuji", {});
+  if (!r.ok) return toast(r.error === "already drawn today" ? "One fortune a day! Come back tomorrow 🎋" : "Not now: Okame is busy or asleep.");
+  toast("Look at Okame: it's shaking the shrine box… 🎋");
+  [0, 0.15, 0.3, 0.45].forEach((t) => chirp(1800 + Math.random() * 600, t, 0.07));
+  setTimeout(refresh, 2600);
+};
 // Hold ◀ / ▶ to keep moving.
 for (const [id, dir] of [["padLeft", "left"], ["padRight", "right"]]) {
   let rep = null;
@@ -580,7 +808,8 @@ function showWardrobe(s) {
   });
   $("giftBtn").disabled = !s.giftReady;
   $("giftBtn").textContent = s.giftReady ? "🎁 Open today's gift" : "🎁 Come back tomorrow for a new gift";
-  $("bestRain").textContent = s.bestRain ? `· best ${s.bestRain}` : "";
+  $("bestRain").textContent = (s.bestRain ? `· best ${s.bestRain}` : "") +
+    (s.rivalRain ? ` · Matthieu ${s.rivalRain}${(s.bestRain || 0) > s.rivalRain ? " 👑" : ""}` : "");
 }
 $("giftBtn").onclick = async () => {
   ac();
@@ -716,6 +945,15 @@ $("pairBtn").onclick = async () => {
     $("codeInput").value = ""; $("codeInput").focus();
   }
 };
+$("hugBack").onclick = () => $("loveBtn").click();
+$("loveBtn").onclick = async () => {
+  const r = await api("/api/love", {});
+  if (r.status === 429) return toast("Okame is still delivering your last heart 💛 (one a minute)");
+  if (!r.ok) return;
+  $("loveBtn").classList.remove("sent"); void $("loveBtn").offsetWidth; $("loveBtn").classList.add("sent");
+  happyChirp();
+  toast("💛 Sent! Matthieu will know you're thinking of him.");
+};
 $("showCode").onclick = async () => {
   const r = await api("/api/pair-request", {});
   toast(r.ok ? "Look at Okame: the code is on its screen." : "Just a moment, then try again.");
@@ -756,8 +994,7 @@ $("newEgg").onclick = async () => {
 document.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
   document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", x === t));
   document.querySelectorAll(".panel").forEach((p) => p.hidden = p.id !== "tab-" + t.dataset.tab);
-  $("playCard").style.display = t.dataset.tab === "care" ? "" : "none";
-  $("wardCard").style.display = t.dataset.tab === "care" ? "" : "none";
+  document.querySelectorAll(".panel-care").forEach((c) => c.style.display = t.dataset.tab === "care" ? "" : "none");
   if (t.dataset.tab === "settings") loadSettings();
   if (t.dataset.tab === "photo") drawPhoto(true);
 });

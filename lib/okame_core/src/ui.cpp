@@ -10,6 +10,10 @@ constexpr uint32_t PAIR_HOLD_MS = 5000;
 constexpr uint32_t MENU_IDLE_MS = 6000;
 constexpr uint32_t STATS_IDLE_MS = 8000;
 constexpr uint32_t ANIM_MS = 2400;
+constexpr uint32_t CARD_EVERY_MS = 15 * 60 * 1000;  // the countdown card, now and then on the main screen
+constexpr uint32_t SAY_MIN_MS = 30 * 60 * 1000, SAY_MAX_MS = 90 * 60 * 1000;  // between spoken words
+constexpr uint32_t SAY_SCROLL_MS = 100, SAY_LEAD_MS = 700, SAY_HOLD_MS = 1200, SAY_STATIC_MS = 4000;
+constexpr int SAY_FIT = LCD_W - 4;  // text width that fits the bubble without scrolling
 constexpr int STATS_PAGES = 5;
 
 const Sprite* const MENU_ICONS[] = {&spr::ico_seed, &spr::ico_millet, &spr::ico_bath, &spr::ico_vet,
@@ -83,13 +87,15 @@ void Ui::drawBird(Pose pose, int x, int y, bool flip) {
 void Ui::drawHat(Pose pose, int x, int y, bool flip) {
   const PetState& s = pet_.state();
   if (!s.hat || s.hat >= HAT_COUNT || s.stage == Stage::Egg || pose == Pose::Peck) return;
-  const Sprite* items[] = {nullptr, &spr::hat_bow, &spr::hat_crown, &spr::hat_beret, &spr::hat_party, &spr::hat_sakura};
+  const Sprite* items[] = {nullptr, &spr::hat_bow, &spr::hat_crown, &spr::hat_beret, &spr::hat_party, &spr::hat_sakura,
+                            &spr::hat_omamori, &spr::hat_hachimaki};
   const Sprite& a = *items[s.hat];
   // Top-left of each accessory in the facing-right sprite (index = Accessory); the chick wears the bow as a hair bow.
-  static const int8_t OFF[3][6][2] = {
-      /*chick*/ {{0, 0}, {0, 0}, {3, 3}, {2, 5}, {7, 6}, {0, 0}},
-      /*juv  */ {{0, 0}, {11, 9}, {7, 4}, {6, 7}, {12, 8}, {3, 4}},
-      /*adult*/ {{0, 0}, {13, 11}, {10, 5}, {9, 8}, {15, 10}, {6, 4}},
+  // Omamori hangs on the chest; the hachimaki ties round the forehead, its ends trailing behind.
+  static const int8_t OFF[3][HAT_COUNT][2] = {
+      /*chick*/ {{0, 0}, {0, 0}, {3, 3}, {2, 5}, {7, 6}, {0, 0}, {5, 6}, {2, 3}},
+      /*juv  */ {{0, 0}, {11, 9}, {7, 4}, {6, 7}, {12, 8}, {3, 4}, {9, 8}, {6, 4}},
+      /*adult*/ {{0, 0}, {13, 11}, {10, 5}, {9, 8}, {15, 10}, {6, 4}, {11, 10}, {9, 5}},
   };
   int st = s.stage == Stage::Chick ? 0 : s.stage == Stage::Juvenile ? 1 : 2;
   const Sprite* body = st == 0 ? &spr::chick_idle : st == 1 ? &spr::juv_idle : &spr::adult_idle;
@@ -139,6 +145,8 @@ void Ui::update(const Env& env) {
     lastOnline_ = env.online;
     screen_ = baseScreen(env);
     nextMove_ = now + 800;
+    nextCard_ = now + 60000;
+    nextSay_ = now + 5 * 60 * 1000;
   }
 
   handleButton(env);
@@ -172,9 +180,19 @@ void Ui::update(const Env& env) {
     case Screen::Stats:
       if (now - lastInput_ > STATS_IDLE_MS) screen_ = forced;
       break;
+    case Screen::Say:
+      if (now - t0_ > (Frame::textWidth(sayText_) <= SAY_FIT ? SAY_STATIC_MS : 2 * sayPassMs())) screen_ = forced;
+      break;
     case Screen::Anim:
       if (anim_ == Anim::Scritch && holding_) break;
-      if (now - t0_ > (anim_ == Anim::Hatch ? 3600u : anim_ == Anim::Gift ? 3400u : ANIM_MS)) screen_ = forced;
+      if (anim_ == Anim::Scritch && now - t0_ > ANIM_MS) {  // a happy bird sometimes says a word afterwards
+        screen_ = forced;
+        maybeSay(env, true);
+        break;
+      }
+      if (now - t0_ > (anim_ == Anim::Hatch ? 3600u : anim_ == Anim::Gift ? 3400u : anim_ == Anim::Omikuji || anim_ == Anim::Occasion || anim_ == Anim::FocusDone ? 6000u :
+                       anim_ == Anim::Hug || anim_ == Anim::HomeDay ? 5200u : anim_ == Anim::Countdown ? (crossOff_ ? 5600u : 4500u) : ANIM_MS))
+        screen_ = forced;
       break;
     case Screen::Duet:
       duet_.update(now);
@@ -200,10 +218,33 @@ void Ui::update(const Env& env) {
       rain_.update(now);
       if (rain_.done()) {
         bool won = rain_.score() >= 10;
+        if (rain_.score() > pet_.state().bestRain) rainRecord_ = rain_.score();
         pet_.recordGame(won, rain_.score());
         pet_.act(won ? Action::GameWin : Action::GameLose, env.epoch);
         dirty_ = true;
         startAnim(won ? Anim::GameWin : Anim::GameLose, now);
+      }
+      break;
+    case Screen::Janken:
+      janken_.update(now);
+      if (janken_.phase() == Janken::Phase::Done) {
+        pet_.recordJanken(janken_.won());
+        finishGame(janken_.won(), env);
+      }
+      break;
+    case Screen::Dance:
+      dance_.update(now);
+      if (dance_.phase() == Dance::Phase::Done) {
+        pet_.recordDance(dance_.score());
+        finishGame(dance_.score() >= 5, env);
+      }
+      break;
+    case Screen::Focus:
+      if ((int32_t)(now - focusEnd_) >= 0) {  // done: a little celebration and a scritch break
+        pet_.recordFocus();
+        focusDoneMin_ = (int)((focusEnd_ - focusStart_) / 60000);
+        dirty_ = true;
+        startAnim(Anim::FocusDone, now);
       }
       break;
     case Screen::Main:
@@ -229,6 +270,9 @@ void Ui::update(const Env& env) {
     default:
       break;
   }
+
+  daily(env);
+  maybeSay(env, false);
 
   // Wander on the main screen.
   if (now >= nextMove_) {
@@ -419,6 +463,119 @@ void Ui::showMessage(const char* from, const char* text, uint32_t nowMs) {
   t0_ = nowMs;
 }
 
+void Ui::showHug(const char* from, uint32_t nowMs) {
+  snprintf(hugFrom_, sizeof hugFrom_, "%s", from);
+  for (char* c = hugFrom_; *c; c++)
+    if (*c >= 'a' && *c <= 'z') *c -= 32;
+  startAnim(Anim::Hug, nowMs);
+}
+
+int Ui::daysToHome(const Date& today) const {
+  const Date& h = pet_.extra().home;
+  if (!h.y || !today.y) return -1;
+  int32_t d = civil(h) - civil(today);
+  return d >= 0 ? (int)d : -1;
+}
+
+// Once a day, the first time the bird is awake on its main screen: a greeting. In between, every 15 minutes, the
+// countdown card. Only from the main screen, so a note waiting in the relay queue never waits long.
+void Ui::daily(const Env& env) {
+  const PetState& s = pet_.state();
+  if (screen_ != Screen::Main || !env.today.y || s.stage == Stage::Egg || s.stage == Stage::Gone ||
+      pet_.asleep(env.epoch))
+    return;
+  uint32_t now = env.nowMs;
+  int32_t today = civil(env.today);
+  int days = daysToHome(env.today);
+  bool first = pet_.extra().greetedDay != today;
+  if (first) {
+    pet_.extraMut().greetedDay = today;
+    dirty_ = true;
+  }
+  occ_ = occasion(env.today, pet_.extra());
+  snprintf(newYear_, sizeof newYear_, "%u", env.today.m == 1 ? env.today.y : env.today.y + 1);
+  if (first && occ_ != Occasion::None) {  // today's greeting; the countdown card follows a little later
+    nextCard_ = now + 20000;
+    startAnim(Anim::Occasion, now);
+    return;
+  }
+  if (days < 0 || (!first && (int32_t)(now - nextCard_) < 0)) return;
+  nextCard_ = now + CARD_EVERY_MS;
+  crossOff_ = first && days > 0 && pet_.extra().lastCardDays == days + 1;
+  cardDays_ = days;
+  if (pet_.extra().lastCardDays != days) {
+    pet_.extraMut().lastCardDays = days;
+    dirty_ = true;
+  }
+  startAnim(days == 0 ? Anim::HomeDay : Anim::Countdown, now);
+}
+
+void Ui::say(const char* word, bool learning, uint32_t nowMs) {
+  if (learning) {  // the first half, then a puzzled "..?"
+    int n = (int)strlen(word), keep = n > 2 ? (n + 1) / 2 : 1;
+    snprintf(sayText_, sizeof sayText_, "%.*s..?", keep, word);
+  } else {
+    snprintf(sayText_, sizeof sayText_, "%s", word);
+  }
+  screen_ = Screen::Say;
+  t0_ = nowMs;
+}
+
+void Ui::maybeSay(const Env& env, bool afterScritch) {
+  const PetState& s = pet_.state();
+  if (screen_ != Screen::Main || !pet_.wordCount() || s.stage == Stage::Egg || s.stage == Stage::Gone ||
+      pet_.mood(env.epoch) != Mood::Content)
+    return;
+  uint32_t now = env.nowMs;
+  if (afterScritch ? rng_.range(0, 99) >= 35 : (int32_t)(now - nextSay_) < 0) return;
+  nextSay_ = now + rng_.range(SAY_MIN_MS, SAY_MAX_MS);
+  int pick = rng_.range(0, pet_.wordCount() - 1);
+  for (const auto& w : pet_.extra().words) {
+    if (!w.text[0] || pick--) continue;
+    say(w.text, env.epoch < w.at + rules::DAY, now);
+    return;
+  }
+}
+
+uint32_t Ui::sayPassMs() const {
+  int over = Frame::textWidth(sayText_) - SAY_FIT;
+  return SAY_LEAD_MS + (uint32_t)(over > 0 ? over : 0) * SAY_SCROLL_MS + SAY_HOLD_MS;
+}
+
+void Ui::drawSay(const Env& env) {
+  uint32_t el = env.nowMs - t0_;
+  // A full-width bubble across the top; the bird's head peeks up from below, talking.
+  const int bh = 11;
+  int w = Frame::textWidth(sayText_), x;
+  if (w <= SAY_FIT) {
+    x = (LCD_W - w + 1) / 2;
+  } else {  // scroll slowly to the end, hold it there, then once more from the start
+    uint32_t p = el % sayPassMs();
+    int off = p < SAY_LEAD_MS ? 0 : (int)((p - SAY_LEAD_MS) / SAY_SCROLL_MS);
+    x = 2 - (off < w - SAY_FIT ? off : w - SAY_FIT);
+  }
+  // The bird sits behind the bubble with its face showing underneath, beak just below the tail.
+  int sh = pet_.state().stage == Stage::Chick ? spr::chick_idle.h : pet_.state().stage == Stage::Juvenile ? spr::juv_idle.h
+                                                                                                         : spr::adult_idle.h;
+  bool talk = (el / 180) % 2;
+  drawBird(talk ? Pose::Happy : Pose::Idle, 4, bh - 4 + sh, false);
+  frame_.fillRect(0, 0, LCD_W, bh, false);
+  frame_.text(sayText_, x, 3);
+  frame_.fillRect(0, 0, 2, bh, false);  // clip to one dot inside the border
+  frame_.fillRect(LCD_W - 2, 0, 2, bh, false);
+  frame_.rect(0, 0, LCD_W, bh);
+  frame_.set(0, 0, false);  // rounded corners
+  frame_.set(LCD_W - 1, 0, false);
+  frame_.set(0, bh - 1, false);
+  frame_.set(LCD_W - 1, bh - 1, false);
+  // The bubble's tail points down at the beak.
+  int tx = 4 + birdW() - 4;
+  frame_.set(tx, bh, true);
+  frame_.set(tx - 1, bh, true);
+  frame_.set(tx - 1, bh - 1, false);
+  frame_.set(tx, bh - 1, false);
+}
+
 void Ui::showPicture(const uint8_t* frames, int count, uint16_t frameMs, uint16_t secs, uint32_t nowMs) {
   picCount_ = count < MAX_PIC_FRAMES ? count : MAX_PIC_FRAMES;
   memcpy(pic_, frames, picCount_ * sizeof pic_[0]);
@@ -444,12 +601,30 @@ bool Ui::startGame(Game g, uint32_t nowMs) {
     case Game::Duet: duet_.start(rng_.next(), nowMs); screen_ = Screen::Duet; break;
     case Game::Peek: peek_.start(rng_.next(), nowMs); screen_ = Screen::Peek; break;
     case Game::Rain: rain_.start(rng_.next(), nowMs, birdW()); screen_ = Screen::Rain; break;
+    case Game::Janken: janken_.start(rng_.next(), nowMs); screen_ = Screen::Janken; break;
+    case Game::Dance: dance_.start(rng_.next(), nowMs); screen_ = Screen::Dance; break;
   }
   t0_ = nowMs;
   return true;
 }
 
+void Ui::finishGame(bool won, const Env& env) {
+  pet_.act(won ? Action::GameWin : Action::GameLose, env.epoch);
+  dirty_ = true;
+  startAnim(won ? Anim::GameWin : Anim::GameLose, env.nowMs);
+}
+
 void Ui::gameInput(Press p, uint32_t nowMs) {
+  if (screen_ == Screen::Janken) {
+    if (p >= Press::One) janken_.input(Janken::Hand(uint8_t(p) - uint8_t(Press::One)), nowMs);
+    return;
+  }
+  if (screen_ == Screen::Dance) {
+    Dance::Move m = p == Press::Left ? Dance::Left : p == Press::Right ? Dance::Right : p == Press::Up ? Dance::Hop
+                                                                                                    : Dance::Bow;
+    if (p == Press::Left || p == Press::Right || p == Press::Up || p == Press::Down) dance_.input(m, nowMs);
+    return;
+  }
   if (screen_ == Screen::Rain) rain_.input(p);
   else if (screen_ == Screen::Duet) duet_.input(p, nowMs);
   else if (screen_ == Screen::Peek) peek_.input(nowMs);
@@ -476,6 +651,10 @@ void Ui::draw(const Env& env) {
     case Screen::Picture: drawPicture(env); break;
     case Screen::Code: drawCode(env); break;
     case Screen::Rain: drawRain(env); break;
+    case Screen::Say: drawSay(env); break;
+    case Screen::Janken: drawJanken(env); break;
+    case Screen::Dance: drawDance(env); break;
+    case Screen::Focus: drawFocus(env); break;
   }
 }
 
@@ -504,7 +683,13 @@ void Ui::drawMain(const Env& env) {
   else if (m == Mood::Sad || m == Mood::Sick) pose = Pose::Flat;
   if (now < blinkUntil_ && pose == Pose::Idle) pose = Pose::Blink;
   int y = LCD_H - (hop_ ? 1 : 0);
+  Weather w = weather(now);
+  if (w == Weather::Rain && pose != Pose::Sleep) {  // the umbrella goes behind the bird, over its head
+    int hx = facingLeft_ ? birdX_ + birdW() - (birdW() * 2) / 3 - 5 : birdX_ + (birdW() * 2) / 3 - 5;
+    frame_.sprite(spr::umbrella, hx, y - (s.stage == Stage::Adult ? 20 : s.stage == Stage::Juvenile ? 17 : 14));
+  }
   drawBird(pose, birdX_, y, facingLeft_);
+  drawDecor(env, birdX_, y, facingLeft_);
   drawPoop(now);
 
   // Status icons in the top-left corner.
@@ -701,7 +886,8 @@ void Ui::drawAnim(const Env& env) {
         frame_.sprite(spr::gift, (LCD_W - 10) / 2 + (alt ? 1 : -1), 4, false, Pattern::Solid, 2);
       } else {
         drawBird(Pose::Happy, cx, LCD_H, false);
-        const Sprite* items[] = {nullptr, &spr::hat_bow, &spr::hat_crown, &spr::hat_beret, &spr::hat_party, &spr::hat_sakura};
+        const Sprite* items[] = {nullptr, &spr::hat_bow, &spr::hat_crown, &spr::hat_beret, &spr::hat_party, &spr::hat_sakura,
+                            &spr::hat_omamori, &spr::hat_hachimaki};
         if (giftItem_ > 0 && giftItem_ < HAT_COUNT && el < 2200)
           frame_.sprite(*items[giftItem_], LCD_W - 9, 2, false, Pattern::Solid, 2);  // what was inside
         else if (giftItem_ <= 0)
@@ -709,6 +895,89 @@ void Ui::drawAnim(const Env& env) {
         frame_.sprite(spr::sparkle, alt ? 1 : LCD_W - 6, 8);
       }
       break;
+    case Anim::Love: {
+      drawBird(Pose::Happy, cx - 6, LCD_H - (alt ? 1 : 0), false);
+      // Three hearts drift up and to the right, one after another.
+      for (int i = 0; i < 3; i++) {
+        int t = int(el) - i * 450;
+        if (t < 0) continue;
+        int y = 12 - t / 90;
+        if (y > -4) frame_.sprite(spr::heart_s, cx + birdW() - 4 + i * 4 + (y % 4 < 2 ? 0 : 1), y);
+      }
+      break;
+    }
+    case Anim::Countdown: {
+      // The ship rocks on the waves; the number of days to go next to it.
+      int bob = (el / 500) % 2;
+      frame_.sprite(spr::ship, 2, 10 + bob);
+      for (int x = 0; x < 17; x++) frame_.set(x, 17 + ((x + el / 250) % 4 < 2 ? 0 : 1), true);
+      // First card of the day: yesterday's number, a thick X drawn across it, a pause, then today's pops in.
+      char buf[8];
+      bool old = crossOff_ && el < 2600;
+      snprintf(buf, sizeof buf, "%d", old ? cardDays_ + 1 : cardDays_);
+      int w = Frame::textWidth(buf, 2), x = 29 - w / 2;
+      int pop = crossOff_ && el >= 2600 && el < 2800 ? 1 : 0;
+      frame_.text(buf, x, 2 - pop, 2);
+      if (old && el >= 600) {
+        int len = el >= 1200 ? 10 : (int)(el - 600) * 10 / 600;
+        // Each stroke is two dots of ink with a cleared dot either side, so it stands out from the digits.
+        for (int pass = 0; pass < 2; pass++)
+          for (int i = 0; i < len; i++) {
+            int a = x - 2 + i * (w + 3) / 10, b = 2 * x + w - 4 - a;  // the two diagonals
+            if (pass == 0) {
+              frame_.fillRect(a - 1, 2 + i, 4, 1, false);
+              frame_.fillRect(b - 1, 2 + i, 4, 1, false);
+            } else {
+              frame_.fillRect(a, 2 + i, 2, 1);
+              frame_.fillRect(b, 2 + i, 2, 1);
+            }
+          }
+      }
+      const char* unit = cardDays_ == 1 ? "DAY" : "DAYS";
+      frame_.text(unit, 29 - Frame::textWidth(unit) / 2, 14);
+      return;
+    }
+    case Anim::HomeDay:
+      if (el < 2000) {
+        frame_.textCentered("HOME", 2, 2);
+        frame_.textCentered("TODAY!", 14);
+      } else {
+        frame_.sprite(spr::house, 1, LCD_H - spr::house.h);
+        drawBird(Pose::Happy, 12, LCD_H - (alt ? 1 : 0), false);
+        frame_.sprite(spr::heart, LCD_W - 7, alt ? 2 : 4);
+        if (alt) frame_.sprite(spr::sparkle, 31, 10);
+      }
+      return;
+    case Anim::Omikuji:
+      drawOmikuji(el);
+      return;
+    case Anim::Occasion:
+      drawOccasionAnim(el);
+      return;
+    case Anim::FocusDone:
+      if (el < 2500) {
+        frame_.textCentered("DONE!", 2, 2);
+        frame_.textCentered("BREAK TIME", 14);
+      } else {  // asks for a scritch
+        drawBird(Pose::Happy, cx - 6, LCD_H - (alt ? 1 : 0), false);
+        frame_.sprite(spr::heart, cx + birdW() - 4, 2);
+        frame_.sprite(spr::question, cx + birdW() + 3, 2);
+      }
+      return;
+    case Anim::Hug:
+      if (el < 1800) {  // who it is from
+        frame_.textCentered("HUG!", 2, 2);
+        frame_.textCentered(hugFrom_[0] ? hugFrom_ : "FOR YOU", 14);
+        if (alt) frame_.sprite(spr::heart_s, 0, 3);
+        else frame_.sprite(spr::heart_s, LCD_W - 5, 3);
+      } else {  // the bird holds a big heart that beats
+        bool beat = (el / 400) % 2;
+        int bx = cx - 7, hx = bx + birdW() + 1, hs = beat ? 2 : 1;  // the heart sits just past the beak
+        drawBird(Pose::Happy, bx, LCD_H, false);
+        frame_.sprite(spr::heart, hx + (beat ? 0 : 2), beat ? 5 : 8, false, Pattern::Solid, hs);
+        if (beat) frame_.sprite(spr::sparkle, LCD_W - 6, 1);
+      }
+      return;
   }
   drawPoop(now);
 }
@@ -838,9 +1107,14 @@ void Ui::drawRain(const Env& env) {
     else frame_.fillRect(sd.x, y, 2, 2);
   }
   drawBird(Pose::Up, r.birdX(), LCD_H, false);
-  char buf[8];
+  char buf[12];
   snprintf(buf, sizeof buf, "%d", r.score());
   frame_.text(buf, 1, 1);
+  int rival = pet_.extra().rivalRain;
+  if (rival && r.score() <= rival) {  // Matthieu's Feather Catch score, to beat
+    snprintf(buf, sizeof buf, "VS%d", rival);
+    frame_.textCentered(buf, 1);
+  }
   for (int i = 0; i < r.lives(); i++) frame_.sprite(spr::heart_s, LCD_W - 4 - i * 4, 0);
 }
 
@@ -848,4 +1122,223 @@ void Ui::drawLights(const Env& env) {
   frame_.fill();
   int phase = (env.nowMs / 600) % 3;
   frame_.spriteInverse(spr::zz, 18 + phase * 3, 8 - phase * 2);
+}
+
+// ---------------------------------------------------------------- 0.4 games
+
+namespace {
+const Sprite* const HANDS[] = {&spr::hand_rock, &spr::hand_scissors, &spr::hand_paper};
+}
+
+void Ui::drawJanken(const Env& env) {
+  const Janken& j = janken_;
+  uint32_t el = j.phaseMs(env.nowMs);
+  if (j.phase() == Janken::Phase::Reveal) {
+    // Her hand on the left, the bird's on the right, the result underneath.
+    frame_.sprite(*HANDS[j.you()], 3, 0, false, Pattern::Solid, 2);
+    if (el > 250) frame_.sprite(*HANDS[j.bird()], LCD_W - 17, 0, true, Pattern::Solid, 2);
+    frame_.text("VS", 17, 4);
+    if (el > 600) frame_.textCentered(j.last() > 0 ? "YOU WIN" : j.last() < 0 ? "OKAME!" : "AIKO!", 15);
+  } else {
+    // "JAN... KEN... PON!" in big letters while she picks; the three hands bounce underneath, one after another.
+    static const char* const CHANT[] = {"JAN", "KEN", "PON"};
+    int k = (el / 600) % 3;
+    frame_.textCentered(CHANT[k], 1, 2);
+    for (int i = 0; i < 3; i++) frame_.sprite(*HANDS[i], 5 + i * 11, 12 - (i == k ? 1 : 0));
+  }
+  // Score in the top corners: her wins on the left, the bird's on the right.
+  if (j.phase() != Janken::Phase::Reveal) {
+    for (int i = 0; i < j.wins(); i++) frame_.sprite(spr::heart_s, 1 + i * 4, 1);
+    for (int i = 0; i < j.losses(); i++) frame_.sprite(spr::heart_s, LCD_W - 4 - i * 4, 1);
+  }
+}
+
+void Ui::drawDance(const Env& env) {
+  const Dance& d = dance_;
+  uint32_t now = env.nowMs;
+  int cx = (LCD_W - birdW()) / 2;
+  int move = d.phase() == Dance::Phase::Showing ? d.showing() >= 0 ? d.move(d.showing()) : -1 : d.echo(now);
+  int x = cx, y = LCD_H;
+  bool flip = false;
+  Pose pose = Pose::Idle;
+  switch (move) {
+    case Dance::Left: x -= 6; flip = true; break;
+    case Dance::Right: x += 6; break;
+    case Dance::Hop: y -= 3; pose = Pose::Happy; break;
+    case Dance::Bow: pose = Pose::Peck; break;
+    default: break;
+  }
+  if (d.phase() == Dance::Phase::Fail) pose = Pose::Flat;
+  drawBird(pose, x, y, flip);
+  // Move counter top-left: one dot per move in this round, filled as they're danced or copied.
+  for (int i = 0; i < d.length(); i++) {
+    bool on = d.phase() == Dance::Phase::Showing ? i <= d.showing() : i < d.entered();
+    frame_.rect(1 + i * 3, 1, 2, 2, true);
+    if (!on) frame_.set(1 + i * 3, 1, false);
+  }
+  if (d.phase() == Dance::Phase::Listening && d.echo(now) < 0 && blink(now, 400))
+    frame_.sprite(spr::question, LCD_W - 5, 2);
+  if (d.phase() == Dance::Phase::Good) frame_.sprite(spr::heart, LCD_W - 7, 2);
+  if (d.phase() == Dance::Phase::Fail) frame_.sprite(spr::cloud, LCD_W - 8, 1);
+}
+
+void Ui::drawOmikuji(uint32_t el) {
+  int cx = (LCD_W - birdW()) / 2;
+  if (el < 1500) {  // the bird shakes the six-sided box
+    int shake = (el / 120) % 2 ? 1 : -1;
+    drawBird(Pose::Happy, cx - 8, LCD_H, false);
+    frame_.sprite(spr::mikuji_box, cx + birdW() - 4 + shake, 6 - (shake > 0));
+    return;
+  }
+  if (el < 2300) {  // a stick slides out
+    drawBird(Pose::Up, cx - 8, LCD_H, false);
+    int bx = cx + birdW() - 4;
+    frame_.sprite(spr::mikuji_box, bx, 6);
+    int out = (int)(el - 1500) / 120;
+    frame_.vline(bx + 2, 6 - out, out < 6 ? out : 6);
+    return;
+  }
+  // The fortune, two kanji at double size: 大吉, 中吉, 小吉, 吉, 末吉, 凶.
+  static const Sprite* const FIRST[] = {&spr::kj_dai, &spr::kj_chu, &spr::kj_sho, nullptr, &spr::kj_sue, nullptr};
+  int g = omikuji_ < 0 || omikuji_ > 5 ? 3 : omikuji_;
+  const Sprite* second = g == 5 ? &spr::kj_kyo : &spr::kj_kichi;
+  if (FIRST[g]) {
+    frame_.sprite(*FIRST[g], 1, 1, false, Pattern::Solid, 2);
+    frame_.sprite(*second, 21, 1, false, Pattern::Solid, 2);
+  } else {
+    frame_.sprite(*second, 11, 1, false, Pattern::Solid, 2);
+  }
+  bool alt = (el / 300) % 2;
+  if (g == 0) {  // 大吉: sparkles
+    frame_.sprite(spr::sparkle, alt ? 0 : LCD_W - 5, alt ? 14 : 0);
+  } else if (g == 5 && el > 4000) {  // 凶: the bird comforts her
+    frame_.clear();
+    drawBird(Pose::Happy, cx - 4, LCD_H, false);
+    frame_.sprite(spr::heart, cx + birdW() - 2, alt ? 2 : 3);
+  }
+}
+
+// ---------------------------------------------------------------- seasons and weather
+
+void Ui::drawDecor(const Env& env, int bx, int by, bool flip) {
+  uint32_t now = env.nowMs;
+  bool alt = (now / 400) % 2;
+  int top = by - (pet_.state().stage == Stage::Adult ? 17 : pet_.state().stage == Stage::Juvenile ? 14 : 11);
+  int headX = flip ? bx + 1 : bx + birdW() - 6;
+  switch (weather(now)) {
+    case Weather::Rain:
+      for (int i = 0; i < 5; i++) {  // drops falling past the umbrella
+        int x = 2 + i * 8 + (i % 2) * 3, yy = int((now / 70 + i * 7) % 24) - 3;
+        frame_.vline(x, yy, 2);
+      }
+      break;
+    case Weather::Snow:
+      for (int i = 0; i < 4; i++) {
+        int x = 3 + i * 10 + ((now / 600 + i) % 2), yy = int((now / 180 + i * 6) % 24) - 4;
+        frame_.set(x, yy, true);
+        frame_.set(x + 1, yy + 1, true);
+      }
+      // fall through: snow is cold too
+    case Weather::Cold:
+      if (alt) {
+        frame_.sprite(spr::shiver, flip ? bx + birdW() + 1 : bx - 3, by - 7);
+        frame_.sprite(spr::shiver, flip ? bx - 3 : bx + birdW() + 1, by - 7);
+      }
+      break;
+    case Weather::Hot:
+      frame_.sprite(spr::sun, LCD_W - 10, 1);
+      frame_.sprite(spr::sweat, flip ? headX - 3 : headX + 6, top + 4 + (alt ? 1 : 0));
+      break;
+    default:
+      break;
+  }
+  // A small seasonal touch in the corner (top right, clear of the attention mark).
+  switch (occ_) {
+    case Occasion::Sakura:
+      for (int i = 0; i < 3; i++) {
+        int x = 6 + i * 13 + ((now / 500 + i) % 3), yy = int((now / 220 + i * 7) % 24) - 3;
+        frame_.sprite(spr::petal, x, yy);
+      }
+      break;
+    case Occasion::Birthday: frame_.sprite(spr::cake, LCD_W - 12, LCD_H - 7); break;
+    case Occasion::Christmas: frame_.sprite(spr::tree, LCD_W - 10, LCD_H - 9); break;
+    case Occasion::Halloween: frame_.sprite(spr::pumpkin, LCD_W - 10, LCD_H - 6); break;
+    case Occasion::NewYear: frame_.sprite(spr::kadomatsu, LCD_W - 10, LCD_H - 9); break;
+    case Occasion::Kodomo: frame_.sprite(spr::koi, LCD_W - 14 + (alt ? 1 : 0), 1); break;
+    case Occasion::Tanabata: frame_.sprite(spr::star, LCD_W - 9, alt ? 1 : 2); break;
+    case Occasion::Sinterklaas: frame_.sprite(spr::mitre, LCD_W - 9, 1); break;
+    case Occasion::Hina: frame_.sprite(spr::hina, LCD_W - 12, 1); break;
+    case Occasion::Anniversary: if (alt) frame_.sprite(spr::heart, LCD_W - 8, 1); break;
+    default: break;
+  }
+}
+
+// The morning greeting on a special day: a word or two and a scene.
+void Ui::drawOccasionAnim(uint32_t el) {
+  bool alt = (el / 300) % 2;
+  int cx = (LCD_W - birdW()) / 2;
+  const char* a = "";
+  const char* b = "";
+  const Sprite* icon = nullptr;
+  switch (occ_) {
+    case Occasion::Birthday: a = "HAPPY"; b = "BIRTHDAY"; icon = &spr::cake; break;
+    case Occasion::Anniversary: a = "OUR"; b = "DAY \x01"; icon = &spr::heart; break;
+    case Occasion::Hina: a = "HINA"; b = "MATSURI"; icon = &spr::hina; break;
+    case Occasion::Sakura: a = "SAKURA"; b = "SEASON"; icon = &spr::hat_sakura; break;
+    case Occasion::Kodomo: a = "KODOMO"; b = "NO HI"; icon = &spr::koi; break;
+    case Occasion::Tanabata: a = "TANA"; b = "BATA"; icon = &spr::star; break;
+    case Occasion::Halloween: a = "BOO!"; b = "HALLOWEEN"; icon = &spr::pumpkin; break;
+    case Occasion::Sinterklaas: a = "DAG"; b = "SINT!"; icon = &spr::mitre; break;
+    case Occasion::Christmas: a = "MERRY"; b = "XMAS!"; icon = &spr::tree; break;
+    case Occasion::NewYear: a = "AKEOME!"; b = newYear_; icon = &spr::kadomatsu; break;
+    default: break;
+  }
+  if (el < 2600) {  // the words, the second line in the special case of a birthday name
+    frame_.textCentered(a, 1, Frame::textWidth(a, 2) <= LCD_W ? 2 : 1);
+    const char* who = pet_.extra().who;
+    frame_.textCentered(occ_ == Occasion::Birthday && el > 1300 && who[0] ? who : b, 13);
+    return;
+  }
+  // Then the bird celebrates next to the day's picture.
+  drawBird(Pose::Happy, cx - 8, LCD_H - (alt ? 1 : 0), false);
+  int k = icon && icon->w <= 9 ? 2 : 1;  // wide pictures (the carp) stay small so they clear the bird
+  if (icon) frame_.sprite(*icon, LCD_W - 2 - icon->w * k, k == 2 ? LCD_H - icon->h * 2 : 2, false, Pattern::Solid, k);
+  if (alt) frame_.sprite(spr::sparkle, LCD_W - 6, 0);
+}
+
+// ---------------------------------------------------------------- focus buddy
+
+bool Ui::startFocus(int minutes, uint32_t nowMs) {
+  const PetState& s = pet_.state();
+  if (s.stage == Stage::Egg || s.stage == Stage::Gone || s.lightsOff || minutes < 1 || minutes > 90) return false;
+  if (screen_ != Screen::Main && screen_ != Screen::Anim && screen_ != Screen::Say) return false;
+  focusStart_ = nowMs;
+  focusEnd_ = nowMs + (uint32_t)minutes * 60000u;
+  screen_ = Screen::Focus;
+  t0_ = nowMs;
+  return true;
+}
+
+void Ui::stopFocus(uint32_t nowMs) {
+  if (screen_ == Screen::Focus) {
+    screen_ = Screen::Main;
+    t0_ = nowMs;
+  }
+}
+
+void Ui::drawFocus(const Env& env) {
+  uint32_t now = env.nowMs;
+  // The bird sits by its laptop; now and then it taps a key. Minutes left in big digits.
+  bool tap = (now / 350) % 6 == 0;
+  drawBird(tap ? Pose::Peck : Pose::Idle, 0, LCD_H, false);
+  frame_.sprite(spr::laptop, birdW() - 1, LCD_H - spr::laptop.h);
+  if ((now / 500) % 2) frame_.hline(birdW() + 2, LCD_H - 3, 2);  // a cursor blinking on the screen
+  int left = (int)((int32_t)(focusEnd_ - now) / 1000);
+  char buf[8];
+  if (left >= 60) snprintf(buf, sizeof buf, "%d", (left + 59) / 60);
+  else snprintf(buf, sizeof buf, "%d", left < 0 ? 0 : left);
+  int w = Frame::textWidth(buf, 2);
+  frame_.text(buf, LCD_W - w - 1, 1, 2);
+  const char* unit = left >= 60 ? "MIN" : "SEC";
+  frame_.text(unit, LCD_W - Frame::textWidth(unit) - 1, 12);
 }

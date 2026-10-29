@@ -81,6 +81,22 @@ String gameJson() {
     return String("{\"type\":\"rain\",\"phase\":\"playing\",\"score\":") + r.score() + ",\"lives\":" + r.lives() +
            ",\"best\":" + app::pet.state().bestRain + "}";
   }
+  if (ui.screen() == Screen::Janken) {
+    const Janken& j = ui.janken();
+    const char* ph[] = {"chant", "reveal", "done"};
+    const char* hands[] = {"rock", "scissors", "paper"};
+    String last = j.phase() == Janken::Phase::Reveal ? String(",\"you\":\"") + hands[j.you()] + "\",\"bird\":\"" +
+                                                           hands[j.bird()] + "\",\"result\":" + j.last()
+                                                     : "";
+    return String("{\"type\":\"janken\",\"phase\":\"") + ph[int(j.phase())] + "\",\"wins\":" + j.wins() +
+           ",\"losses\":" + j.losses() + last + "}";
+  }
+  if (ui.screen() == Screen::Dance) {
+    const Dance& d = ui.dance();
+    const char* ph[] = {"showing", "listening", "good", "fail", "done"};
+    return String("{\"type\":\"dance\",\"phase\":\"") + ph[int(d.phase())] + "\",\"length\":" + d.length() +
+           ",\"entered\":" + d.entered() + ",\"best\":" + app::pet.extra().bestDance + "}";
+  }
   if (ui.screen() == Screen::Peek) {
     const Peekaboo& p = ui.peek();
     const char* ph[] = {"hidden", "peeking", "hit", "miss", "done"};
@@ -123,6 +139,30 @@ String web::stateJson() {
   j += ",\"fw\":\"" FW_NAME "\"";
   j += ",\"game\":" + gameJson();
   j += ",\"msg\":" + cloud::lastMessageJson();
+  j += ",\"hug\":" + cloud::lastHugJson();
+  j += ",\"homeDays\":" + String(app::ui.daysToHome(app::today()));
+  j += ",\"wx\":" + cloud::weatherJson();
+  j += ",\"words\":" + String(app::pet.wordCount()) + ",\"wordList\":[";
+  {
+    bool firstWord = true;
+    for (const auto& wd : app::pet.extra().words) {
+      if (!wd.text[0]) continue;
+      j += String(firstWord ? "" : ",") + "{\"t\":" + jsonString(wd.text) + ",\"learning\":" +
+           (now < wd.at + rules::DAY ? "true" : "false") + "}";
+      firstWord = false;
+    }
+  }
+  j += "]";
+  {
+    const PetExtra& x = app::pet.extra();
+    Date d = app::today();
+    bool drawn = d.y && x.omikujiDay == civil(d);
+    j += ",\"omikuji\":{\"today\":" + String(drawn ? x.omikujiGrade : -1) + ",\"seen\":" + String(x.omikujiSeen) +
+         ",\"day\":" + String(d.y ? civil(d) : 0) + "}";
+    j += ",\"bestDance\":" + String(x.bestDance) + ",\"jankenWins\":" + String(x.jankenWins);
+    j += ",\"rivalRain\":" + String(x.rivalRain);
+    j += ",\"focusLeft\":" + String(app::ui.focusLeftSec(millis())) + ",\"focusCount\":" + String(x.focusCount);
+  }
   j += ",\"page\":\"" WEB_PAGE_HASH "\"";
   j += ",\"hat\":" + String(s.hat) + ",\"unlocked\":" + String(s.unlocked);
   j += ",\"giftReady\":" + String(app::pet.giftReady(now) ? "true" : "false");
@@ -228,6 +268,8 @@ void handleGame(AsyncWebServerRequest* r) {
   if (g == "duet") game = Ui::Game::Duet;
   else if (g == "peek") game = Ui::Game::Peek;
   else if (g == "rain") game = Ui::Game::Rain;
+  else if (g == "janken") game = Ui::Game::Janken;
+  else if (g == "dance") game = Ui::Game::Dance;
   else return sendJson(r, 400, "{\"error\":\"unknown game\"}");
   bool ok;
   {
@@ -242,7 +284,10 @@ void handleGameInput(AsyncWebServerRequest* r) {
   {
     app::Lock lock;
     if (!app::ui.inGame()) return sendJson(r, 409, "{\"error\":\"no game\"}");
-    app::ui.gameInput(p == "long" ? Press::Long : p == "left" ? Press::Left : p == "right" ? Press::Right : Press::Short, millis());
+    Press k = p == "long" ? Press::Long : p == "left" ? Press::Left : p == "right" ? Press::Right
+            : p == "hop" ? Press::Up : p == "bow" ? Press::Down : p == "rock" ? Press::One
+            : p == "scissors" ? Press::Two : p == "paper" ? Press::Three : Press::Short;
+    app::ui.gameInput(k, millis());
   }
   sendJson(r, 200, "{\"game\":" + [] { app::Lock lock; return gameJson(); }() + "}");
 }
@@ -258,6 +303,64 @@ void handleGift(AsyncWebServerRequest* r) {
   if (got < -1) return sendJson(r, 409, "{\"error\":\"come back tomorrow\"}");
   app::requestSave();
   sendJson(r, 200, String("{\"gift\":") + got + "}");
+}
+
+// Today's omikuji: once per local day.
+void handleOmikuji(AsyncWebServerRequest* r) {
+  int g;
+  {
+    app::Lock lock;
+    Date d = app::today();
+    Screen s = app::ui.screen();
+    if (!d.y) return sendJson(r, 409, "{\"error\":\"no clock yet\"}");
+    if (s != Screen::Main && s != Screen::Anim) return sendJson(r, 409, "{\"error\":\"not now\"}");
+    g = app::pet.drawOmikuji(civil(d), esp_random());
+    if (g >= 0) app::ui.showOmikuji(g, millis());
+  }
+  if (g < 0) return sendJson(r, 409, "{\"error\":\"already drawn today\"}");
+  app::requestSave();
+  cloud::event(String("{\"type\":\"omikuji\",\"grade\":") + g + "}");
+  sendJson(r, 200, String("{\"grade\":") + g + "}");
+}
+
+// Tap a word on the page and the bird says it now.
+void handleSay(AsyncWebServerRequest* r) {
+  String t = param(r, "w");
+  {
+    app::Lock lock;
+    if (app::ui.screen() != Screen::Main) return sendJson(r, 409, "{\"error\":\"not now\"}");
+    for (const auto& wd : app::pet.extra().words)
+      if (wd.text[0] && t == wd.text) {
+        app::ui.say(wd.text, app::epoch() < wd.at + rules::DAY, millis());
+        return sendJson(r, 200, "{\"ok\":true}");
+      }
+  }
+  sendJson(r, 404, "{\"error\":\"unknown word\"}");
+}
+
+// Focus buddy: min=25 or 50 starts a session, min=0 stops it.
+void handleFocus(AsyncWebServerRequest* r) {
+  int m = param(r, "min").toInt();
+  bool ok = true;
+  {
+    app::Lock lock;
+    if (m <= 0) app::ui.stopFocus(millis());
+    else ok = app::ui.startFocus(m, millis());
+  }
+  sendJson(r, ok ? 200 : 409, ok ? "{\"ok\":true}" : "{\"error\":\"not now\"}");
+}
+
+// The 💛 button: hearts on the screen here, and Matthieu hears about it on Telegram.
+void handleLove(AsyncWebServerRequest* r) {
+  static uint32_t last = 0;
+  if (last && millis() - last < 60000) return sendJson(r, 429, "{\"error\":\"wait a little\"}");  // as the relay
+  last = millis();
+  {
+    app::Lock lock;
+    if (!app::pet.asleep(app::epoch())) app::ui.love(millis());
+  }
+  cloud::event("{\"type\":\"love\"}");
+  sendJson(r, 200, "{\"ok\":true}");
 }
 
 void handleWear(AsyncWebServerRequest* r) {
@@ -316,6 +419,10 @@ void begin() {
   server.on("/api/game-input", HTTP_POST, handleGameInput);
   server.on("/api/gift", HTTP_POST, handleGift);
   server.on("/api/wear", HTTP_POST, handleWear);
+  server.on("/api/love", HTTP_POST, handleLove);
+  server.on("/api/omikuji", HTTP_POST, handleOmikuji);
+  server.on("/api/say", HTTP_POST, handleSay);
+  server.on("/api/focus", HTTP_POST, handleFocus);
   server.on("/api/settings", HTTP_GET, handleSettings);
   server.on("/api/scan", HTTP_GET, [](AsyncWebServerRequest* r) {
     if (!authorized(r)) return denied(r);

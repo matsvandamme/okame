@@ -20,7 +20,7 @@ import sqlite3
 import ssl
 import time
 import unicodedata
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -228,7 +228,7 @@ Voice: a cheeky, affectionate cockatiel. Short replies (1-3 sentences), playful,
 *fluffs feathers*), at most one or two emoji. Reply in the language the person writes in (Japanese, English or
 Dutch). Never mention being an AI, a language model or Telegram. You know your own state (given below) and may
 hint at needs (hungry, dirty cage, sleepy) the way a bird would. You can't do actions yourself: if they want to
-feed or play, tell them the command (/feed, /treat, /bath, /vet, /scritch, /cover, /draw, /song, /note)."""
+feed or play, tell them the command (/feed, /treat, /bath, /vet, /scritch, /cover, /draw, /song, /note, /hug, /home, /teach, /catch)."""
 
 
 async def ask(system, prompt, schema=None, effort="low", max_tokens=1500):
@@ -390,7 +390,9 @@ RESULT_TEXT = {"refused": "…but it isn't hungry right now 🙅", "not-needed":
                "sleeping": "…shh, the cage is covered. Uncover it first 🌙"}
 HELP = ("<b>オカメ Okame</b>, your pocket cockatiel 🐦💛\n\n"
         "<b>Look after me</b>\n/status how I'm doing · /photo my screen\n/feed /treat /bath /vet /scritch /cover\n\n"
-        "<b>Make my screen sparkle</b>\n/note &lt;text&gt; a love note on my screen 💌\n"
+        "<b>Make my screen sparkle</b>\n/note &lt;text&gt; a love note on my screen 💌\n/hug a big hug on my screen 🤗\n/home &lt;date&gt; count down the days until you're home 🚢\n"
+        "/teach &lt;word&gt; teach me to say something 🦜 · /words\n"
+        "/catch play Feather Catch against Haruki's Seed Rain score 🌻\n"
         "/draw &lt;idea&gt; I draw a pixel picture 🎨\n/hearts /fireworks /sakura /rain ✨\n\n"
         "<b>Just for fun</b>\n/song &lt;idea&gt; I compose a whistle 🎶\n/diary my day · /haiku a poem\n"
         "…or simply chat with me!")
@@ -420,6 +422,19 @@ async def handle(msg):
         enqueue("act", {"action": action, "by": name}, chat)
         event(name, f"did {action}")
         return await say(chat, f"{line}{'' if online() else ' (I will get it as soon as I wake up 💤)'}")
+    if cmd in ("/teach", "/words", "/forget"):
+        return await words_cmd(chat, name, cmd, arg)
+    if cmd == "/catch":
+        return await catch_start(chat, name)
+    if cmd == "/home":
+        return await home_cmd(chat, name, arg)
+    if cmd == "/hug":
+        if not egg_has(V04):
+            return await say(chat, UPDATE_FIRST)
+        enqueue("hug", {"from": (to_lcd_text(name).replace("\x01", "").split() or ["FRIEND"])[0][:10]}, chat)
+        event(name, "sent a hug")
+        where = "right now" if online() else "the moment I'm back on Wi-Fi"
+        return await say(chat, f"🤗 A big hug is on its way to my screen {where}!")
     if cmd == "/note":
         if not arg:
             return await say(chat, "Write it after the command, e.g. <code>/note I miss you ♥</code>")
@@ -520,6 +535,11 @@ async def telegram_loop():
         {"command": "scritch", "description": "Head scritches 🥰"}, {"command": "bath", "description": "Clean the cage 🛁"},
         {"command": "vet", "description": "Visit the vet 🩺"}, {"command": "cover", "description": "Cover / uncover the cage 🌙"},
         {"command": "note", "description": "A love note on Okame's screen 💌"},
+        {"command": "hug", "description": "A big hug on Okame's screen 🤗"},
+        {"command": "home", "description": "Countdown to coming home 🚢"},
+        {"command": "teach", "description": "Teach Okame a word 🦜"},
+        {"command": "words", "description": "Words Okame can say"},
+        {"command": "catch", "description": "Feather Catch: beat Haruki's score 🌻"},
         {"command": "draw", "description": "Okame draws a pixel picture 🎨"},
         {"command": "hearts", "description": "Hearts on the screen 💛"}, {"command": "fireworks", "description": "Fireworks ✨"},
         {"command": "sakura", "description": "Falling sakura 🌸"}, {"command": "song", "description": "Okame composes a whistle 🎶"},
@@ -542,6 +562,8 @@ async def telegram_loop():
             kv_set("tg_offset", offset)
             if "message" in upd:
                 asyncio.create_task(safe(handle(upd["message"])))
+            elif "callback_query" in upd:
+                asyncio.create_task(safe(on_callback(upd["callback_query"])))
 
 
 async def safe(coro):
@@ -564,7 +586,9 @@ async def sync(request):
     if not hmac.compare_digest(request.headers.get("X-Okame-Key", ""), CFG["device_key"]):
         return web.json_response({"error": "nope"}, status=401)
     body = await request.json()
+    away = time.time() - device["last_seen"]
     device["last_seen"] = time.time()
+    fw_before = device["state"].get("fw")
     if body.get("state"):
         before = device["state"]
         device["state"] = body["state"]
@@ -575,6 +599,11 @@ async def sync(request):
         kv_set("frame", body["frame"])
     for ack in body.get("acks", []):
         await acked(ack)
+    for e in body.get("events", [])[:16]:
+        if isinstance(e, dict):
+            asyncio.create_task(safe(on_event(e)))
+    if away > 300 or device["state"].get("fw") != fw_before:
+        asyncio.create_task(safe(on_connect()))
     cmds = pending()
     if not cmds and body.get("wait"):
         new_command.clear()
@@ -599,10 +628,402 @@ async def acked(ack):
         return
     if kind == "msg":
         await say(chat, "✓ Your note is on my screen now 💌")
+    elif kind == "hug" and result == "shown":
+        await say(chat, "🤗 Your hug just arrived on my screen. ピヨ💛")
     elif kind == "act":
         payload = json.loads(row["payload"])
         await asyncio.sleep(2.5)  # let the egg's animation start before taking its picture
         await show(chat, RESULT_TEXT.get(result, "Done! ピヨ ✨"), label=payload["action"])
+
+
+def fw_tuple(s):
+    return tuple(int(x) for x in re.findall(r"\d+", (s or "0").split("-")[0])[:3]) or (0,)
+
+
+def egg_has(version):
+    """True when the egg runs firmware `version` or newer (it reports its version on every sync)."""
+    return fw_tuple(device["state"].get("fw")) >= version
+
+
+V04 = (0, 4, 0)  # hug, words, countdown, weather, dates, rival: older eggs answer "unknown" to these
+UPDATE_FIRST = "My little screen needs an update before I can do that 🛠️ ピヨ"
+
+
+def partners():
+    """Who hears about Haruki's taps on the page (💛, scores): Matthieu's chat, from config.json."""
+    ids = set(CFG.get("partner_chats", []))
+    return [u for u in users() if u["chat_id"] in ids]
+
+
+async def on_event(e):
+    """Something happened on the egg (cloud::event). Handlers are added per feature in EVENT_HANDLERS."""
+    handler = EVENT_HANDLERS.get(str(e.get("type")))
+    if handler:
+        await handler(e)
+    else:
+        log.info("egg event %s (no handler)", e.get("type"))
+
+
+async def on_connect():
+    """The egg is back after a while (or was updated): resend what it keeps only in memory, and its settings."""
+    if not egg_has(V04):
+        return
+    for fn in CONNECT_HOOKS:
+        await fn()
+
+
+async def love_tapped(e):
+    """Haruki tapped 💛 on the phone page."""
+    if time.time() - kv_get("last_love", 0) < 60:
+        return
+    kv_set("last_love", time.time())
+    event("Haruki", "sent a 💛 from the page")
+    for p in partners():
+        await show(p["chat_id"], "💛 Haruki is thinking of you right now. Send one back with /hug 🤗")
+
+
+def parse_day(text, today=None):
+    """'2026-12-15', '15/12/2026', '15-12' or '15.12' (the next one coming) -> date, else None."""
+    today = today or datetime.now(TZ).date()
+    t = text.strip()
+    try:
+        if m := re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", t):
+            return date(int(m[1]), int(m[2]), int(m[3]))
+        if m := re.fullmatch(r"(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?", t):
+            y = int(m[3]) if m[3] else today.year
+            y += 2000 if y < 100 else 0
+            d = date(y, int(m[2]), int(m[1]))
+            return d if m[3] or d >= today else date(y + 1, d.month, d.day)
+    except ValueError:
+        return None
+    return None
+
+
+def home_days():
+    h = kv_get("home")
+    return (date.fromisoformat(h) - datetime.now(TZ).date()).days if h else None
+
+
+async def send_home():
+    h = kv_get("home")
+    d = date.fromisoformat(h) if h else None
+    enqueue("home", {"y": d.year, "m": d.month, "d": d.day} if d else {"y": 0, "m": 0, "d": 0})
+
+
+async def home_cmd(chat, name, arg):
+    if not egg_has(V04):
+        return await say(chat, UPDATE_FIRST)
+    if not arg:
+        n = home_days()
+        if n is None or n < 0:
+            return await say(chat, "When are you coming home? e.g. <code>/home 15/12</code> 🚢")
+        return await say(chat, f"🚢 {n} day{'s' * (n != 1)} to go! (Change it with <code>/home 15/12</code>, "
+                               f"or <code>/home off</code>.)")
+    if arg.lower() in ("off", "clear", "none", "stop"):
+        db.execute("delete from kv where k='home'")
+        await send_home()
+        return await say(chat, "OK, no countdown on my screen for now.")
+    d = parse_day(arg)
+    if not d or d < datetime.now(TZ).date():
+        return await say(chat, "I couldn't read that date 🤔 Try <code>/home 15/12</code> or <code>/home 2026-12-15</code>.")
+    kv_set("home", d.isoformat())
+    await send_home()
+    event(name, f"set the homecoming to {d.isoformat()}")
+    n = (d - datetime.now(TZ).date()).days
+    return await say(chat, f"🚢 Countdown on! {n} day{'s' * (n != 1)} until you're home. "
+                           f"I'll cross one off every morning ✏️")
+
+
+async def lcd_word(text):
+    """A word the screen can show: Latin letters as they are; Japanese (or anything else) as Hepburn romaji."""
+    lcd = to_lcd_text(text).replace("\x01", "").strip()
+    if len(lcd) < len(re.sub(r"\s", "", text)) // 2 or not lcd:
+        romaji = await ask("Convert the user's word or short phrase to Hepburn romaji. Reply with the romaji only, "
+                           "plain ASCII letters and spaces, no punctuation.", text, effort="low", max_tokens=60)
+        lcd = to_lcd_text(romaji or "")
+    return lcd[:24].strip()
+
+
+async def words_cmd(chat, name, cmd, arg):
+    if not egg_has(V04):
+        return await say(chat, UPDATE_FIRST)
+    words = kv_get("words", [])
+    if cmd == "/words":
+        if not words:
+            return await say(chat, "I don't know any words yet. Teach me one: <code>/teach おやすみ</code> 🦜")
+        return await say(chat, "🦜 Words I can say:\n" + "\n".join(f"• {esc(w)}" for w in words) +
+                         "\n\nForget one with <code>/forget WORD</code>.")
+    if not arg:
+        return await say(chat, f"Which word? e.g. <code>{cmd} {'おやすみ' if cmd == '/teach' else 'OYASUMI'}</code>")
+    word = await lcd_word(arg)
+    if not word:
+        return await say(chat, "I can't say that one 🙈 My screen only knows Latin letters; try writing it in romaji, "
+                               "e.g. <code>/teach oyasumi</code>.")
+    if cmd == "/forget":
+        if word not in words:
+            return await say(chat, f"I don't know {esc(word)} 🤔 /words shows what I know.")
+        kv_set("words", [w for w in words if w != word])
+        enqueue("forget", {"text": word}, chat)
+        return await say(chat, f"OK, I'll forget {esc(word)}.")
+    if word in words:
+        return await say(chat, f"I already know {esc(word)}! ピヨ")
+    kv_set("words", (words + [word])[-8:])
+    enqueue("word", {"text": word}, chat)
+    event(name, f"taught me to say {word}")
+    return await say(chat, f"🦜 {esc(word)}… {esc(word[:max(1, (len(word) + 1) // 2)])}..? I'm practising! "
+                           "Give me a day and I'll say it properly, now and then, on my screen.")
+
+
+async def resend_words():
+    """A new egg forgets its words; teach it again what Matthieu taught the last one."""
+    words = kv_get("words", [])
+    if words and device["state"].get("words", 0) < len(words):
+        for w in words:
+            enqueue("word", {"text": w})
+
+
+OMIKUJI = ["大吉", "中吉", "小吉", "吉", "末吉", "凶"]
+
+
+async def omikuji_drawn(e):
+    """Haruki drew today's fortune. The two that matter most reach Matthieu: 大吉 to celebrate, 凶 to cheer her up."""
+    g = int(e.get("grade", 3))
+    event("Haruki", f"drew {OMIKUJI[g % 6]} at the omikuji")
+    if g == 0:
+        text = "🎋 Haruki drew 大吉 (great blessing) at my omikuji today! Lucky day ✨"
+    elif g == 5:
+        text = "🎋 Haruki drew 凶 (bad luck) at my omikuji today… maybe send her a /hug? 🤗"
+    else:
+        return
+    for p in partners():
+        await say(p["chat_id"], text)
+
+
+def classify_weather(code, temp):
+    """open-meteo WMO code + °C -> what the bird reacts to."""
+    if code in (71, 73, 75, 77, 85, 86):
+        return "snow"
+    if 51 <= code <= 67 or 80 <= code <= 82 or code >= 95:
+        return "rain"
+    if temp >= 28:
+        return "hot"
+    if temp <= 3:
+        return "cold"
+    return "clear"
+
+
+async def fetch_weather():
+    w = CFG.get("weather")
+    if not w:
+        return None
+    url = ("https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+           "&current=temperature_2m,weather_code&timezone=auto").format(**w)
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            cur = (await resp.json())["current"]
+    except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, ValueError):
+        return None
+    temp = round(cur["temperature_2m"])
+    return {"kind": classify_weather(int(cur["weather_code"]), temp), "temp": temp, "place": w.get("place", "")}
+
+
+async def send_weather(force=False):
+    if not egg_has(V04):
+        return
+    wx = kv_get("wx")
+    if wx and (force or time.time() - kv_get("wx_sent", 0) > 2 * 3600 or wx != kv_get("wx_last_sent")):
+        enqueue("wx", wx)
+        kv_set("wx_sent", time.time())
+        kv_set("wx_last_sent", wx)
+
+
+async def weather_loop():
+    while True:
+        wx = await fetch_weather()
+        if wx:
+            kv_set("wx", wx)
+            await send_weather()
+        await asyncio.sleep(30 * 60)
+
+
+async def send_dates():
+    ds = CFG.get("dates", [])
+    who = next((d.get("who", "") for d in ds if d.get("kind") == 1), "")
+    enqueue("dates", {"list": [{"m": d["m"], "d": d["d"], "kind": d["kind"]} for d in ds][:4],
+                      "who": to_lcd_text(who)[:12]})
+
+
+def special_today(day):
+    return [d for d in CFG.get("dates", []) if d.get("m") == day.month and d.get("d") == day.day]
+
+
+async def birthdays(now):
+    """The evening before: a heads-up for Matthieu. On the day: wishes for everyone."""
+    from datetime import timedelta
+    tomorrow = now.date() + timedelta(days=1)
+    for d in special_today(tomorrow):
+        if d.get("kind") == 1:
+            age = f" ({tomorrow.year - d['year']})" if d.get("year") else ""
+            for p in partners():
+                await say(p["chat_id"], f"🎂 Psst… tomorrow is {esc(d.get('who', ''))}'s birthday{age}! "
+                                        "I'll throw a party on her screen in the morning. Maybe send a /note too? 💌")
+    for d in special_today(now.date()):
+        if d.get("kind") == 1:
+            for u in users():
+                await show(u["chat_id"], f"🎂🎉 Happy birthday, {esc(d.get('who', ''))}! ピヨピヨ♪ "
+                                         "There's cake on my screen today!")
+
+
+async def focus_done(e):
+    m = int(e.get("minutes", 25))
+    event("Haruki", f"focused for {m} minutes with me")
+    for p in partners():
+        await say(p["chat_id"], f"📚 Haruki just finished {m} minutes of focus with me. がんばったね！ "
+                                "A /note would make her break even better 💌")
+
+
+# ---------------------------------------------------------------------------------------- Feather Catch
+# Matthieu's side of the Seed Rain duel, played with inline buttons: a seed appears in one of five slots; tap it
+# within the window. Same scoring as Seed Rain (golden = 3, three lives), about as long (15 rounds of up to 3 s).
+
+CATCH_ROUNDS, CATCH_LIVES, CATCH_WINDOW, CATCH_GOLDEN = 15, 3, 3.0, 0.15
+catches = {}  # chat id -> the game in progress
+
+
+def catch_new_round(g):
+    g["col"] = random.randrange(5)
+    g["golden"] = random.random() < CATCH_GOLDEN
+    g["shown"] = time.time()
+    g["busy"] = False
+
+
+def catch_board(g):
+    seed = "⭐" if g["golden"] else "🌻"
+    return {"inline_keyboard": [[{"text": seed if i == g["col"] else "·",
+                                  "callback_data": f"catch:{g['id']}:{g['round']}:{i}"} for i in range(5)]]}
+
+
+def catch_text(g, note=""):
+    hearts = "❤️" * g["lives"] + "🤍" * (CATCH_LIVES - g["lives"])
+    return (f"🌻 <b>Feather Catch</b> · {g['round'] + 1}/{CATCH_ROUNDS}\nScore <b>{g['score']}</b> · {hearts}\n"
+            f"Tap the seed before it falls! ⭐ = 3" + (f"\n{note}" if note else ""))
+
+
+async def catch_start(chat, name):
+    g = {"id": os.urandom(3).hex(), "round": 0, "score": 0, "lives": CATCH_LIVES, "chat": chat, "name": name}
+    catch_new_round(g)
+    res = await tg("sendMessage", chat_id=chat, text=catch_text(g), parse_mode="HTML", reply_markup=catch_board(g))
+    g["msg"] = (res.get("result") or {}).get("message_id")
+    catches[chat] = g
+    asyncio.create_task(safe(catch_timeout(g, 0)))
+
+
+async def catch_timeout(g, rnd):
+    await asyncio.sleep(CATCH_WINDOW + 0.3)  # a little grace for a slow link
+    if catches.get(g["chat"]) is g and g["round"] == rnd and not g["busy"]:
+        await catch_resolve(g, False, "💨 Too slow, it fell!")
+
+
+async def on_callback(cq):
+    await tg("answerCallbackQuery", callback_query_id=cq["id"])
+    parts = (cq.get("data") or "").split(":")
+    if len(parts) != 4 or parts[0] != "catch":
+        return
+    g = catches.get((cq.get("message") or {}).get("chat", {}).get("id"))
+    if not g or g["id"] != parts[1] or int(parts[2]) != g["round"] or g["busy"]:
+        return
+    late = time.time() - g["shown"] > CATCH_WINDOW + 0.3
+    hit = int(parts[3]) == g["col"] and not late
+    await catch_resolve(g, hit, "💨 Too slow!" if late else "")
+
+
+async def catch_resolve(g, hit, note=""):
+    g["busy"] = True
+    if hit:
+        g["score"] += 3 if g["golden"] else 1
+        note = "⭐ Golden! +3" if g["golden"] else "🌻 Caught it! +1"
+    else:
+        g["lives"] -= 1
+        note = note or "🙈 Missed!"
+    g["round"] += 1
+    if g["round"] >= CATCH_ROUNDS or g["lives"] <= 0:
+        return await catch_end(g, note)
+    catch_new_round(g)
+    await tg("editMessageText", chat_id=g["chat"], message_id=g["msg"], text=catch_text(g, note), parse_mode="HTML",
+             reply_markup=catch_board(g))
+    asyncio.create_task(safe(catch_timeout(g, g["round"])))
+
+
+async def catch_end(g, note):
+    catches.pop(g["chat"], None)
+    score, chat = g["score"], g["chat"]
+    her = int(device["state"].get("bestRain") or 0)
+    mine = chat in {p["chat_id"] for p in partners()}
+    best = kv_get("catch_best", 0)
+    lines = [note, f"🏁 <b>Game over!</b> You caught <b>{score}</b>."]
+    if mine and score > best:
+        kv_set("catch_best", score)
+        lines.append("🏆 New personal best!")
+        if egg_has(V04):
+            enqueue("rival", {"score": score})
+        for u in users():
+            if u["chat_id"] != chat:
+                await say(u["chat_id"], f"🌻 {esc(g['name'])} just scored {score} in Feather Catch! "
+                                        "Beat it in Seed Rain on my page 😤🌧️")
+    if mine and her:
+        lines.append(f"Haruki's Seed Rain best is {her}: " +
+                     ("you're ahead! 😎" if max(score, best) > her else "she's still ahead! 💪" if her > max(score, best)
+                      else "it's a tie! 🤝"))
+    lines.append("Again? /catch")
+    await tg("editMessageText", chat_id=chat, message_id=g["msg"], text="\n".join(lines), parse_mode="HTML")
+    event(g["name"], f"scored {score} in Feather Catch")
+
+
+async def rain_record(e):
+    """Haruki set a new Seed Rain best on the egg."""
+    score = int(e.get("score", 0))
+    event("Haruki", f"set a Seed Rain record: {score}")
+    rival = kv_get("catch_best", 0)
+    for p in partners():
+        beat = f" That beats your {rival} in Feather Catch! 😱" if rival and score > rival else ""
+        await say(p["chat_id"], f"🌧️ Haruki set a new Seed Rain record: <b>{score}</b>!{beat} /catch to answer 😤")
+
+
+async def send_rival():
+    best = kv_get("catch_best", 0)
+    if best:
+        enqueue("rival", {"score": best})
+
+
+EVENT_HANDLERS = {"love": love_tapped, "omikuji": omikuji_drawn, "focus": focus_done, "rain": rain_record}
+async def weather_now():
+    await send_weather(force=True)
+
+
+WHATS_NEW_MATTHIEU = (
+    "✨ <b>I just updated myself!</b> ピヨ New things you can do from the ship:\n\n"
+    "🤗 /hug a big hug on my screen\n🚢 /home 15/12 a countdown to your return, crossed off every morning\n"
+    "🦜 /teach おやすみ teach me a word; I'll say it now and then (after a day of practice)\n"
+    "🌻 /catch Feather Catch, your side of a duel with Haruki's Seed Rain\n\n"
+    "And you'll hear from me when Haruki taps 💛 on my page, draws 大吉 or 凶 at the omikuji, "
+    "finishes a focus session or sets a Seed Rain record.")
+WHATS_NEW_HARUKI = (
+    "✨ <b>I just updated myself!</b> ピヨ New on my page:\n\n"
+    "💛 a heart button that tells Matthieu you're thinking of him\n✊ Janken and 💃 Copy the dance\n"
+    "🎋 a daily omikuji (collect all six!)\n📚 Focus with Okame, 25 or 50 minutes\n"
+    "and I now know the weather outside, the seasons… and a certain birthday 🎂")
+
+
+async def whats_new():
+    if kv_get("whats_new_0.4"):
+        return
+    kv_set("whats_new_0.4", time.time())
+    ids = {p["chat_id"] for p in partners()}
+    for u in users():
+        await say(u["chat_id"], WHATS_NEW_MATTHIEU if u["chat_id"] in ids else WHATS_NEW_HARUKI)
+
+
+CONNECT_HOOKS = [send_home, resend_words, send_dates, weather_now, send_rival, whats_new]
 
 
 async def notice_changes(before, after):
@@ -625,9 +1046,23 @@ async def mornings():
         now = datetime.now(TZ)
         if now.hour == 8 and kv_get("morning", "") != now.date().isoformat():
             kv_set("morning", now.date().isoformat())
+            n = home_days()
+            partner_ids = {p["chat_id"] for p in partners()}
             for u in users():
+                me = u["chat_id"] in partner_ids
+                extra = (f"\n🏠 {'You come' if me else 'Matthieu comes'} home TODAY! 🎉" if n == 0 else
+                         f"\n🚢 {n} day{'s' * (n != 1)} until {'you are' if me else 'Matthieu is'} home"
+                         if n and n > 0 else "")
                 greet = "おはよう！" if u["lang"] == "ja" else "Goedemorgen!" if u["lang"] == "nl" else "Good morning!"
-                await show(u["chat_id"], f"☀️ {greet} ピヨ\n" + status_caption())
+                await show(u["chat_id"], f"☀️ {greet} ピヨ\n" + status_caption() + extra)
+            await birthdays(now)
+        if now.hour == 20 and kv_get("evening", "") != now.date().isoformat():
+            kv_set("evening", now.date().isoformat())
+            from datetime import timedelta
+            if any(d.get("kind") == 1 for d in special_today(now.date() + timedelta(days=1))):
+                for p in partners():
+                    await say(p["chat_id"], "🎂 Reminder: tomorrow is Haruki's birthday! "
+                                            "Set up a /note tonight so it's waiting on my screen in the morning 💌")
         await asyncio.sleep(60)
 
 
@@ -659,7 +1094,7 @@ async def main():
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", CFG.get("port", 8443), ssl_context=ctx).start()
     log.info("okame relay up on :%s, AI %s", CFG.get("port", 8443), "on" if ai else "off")
-    await asyncio.gather(telegram_loop(), mornings())
+    await asyncio.gather(telegram_loop(), mornings(), weather_loop())
 
 
 if __name__ == "__main__":

@@ -50,7 +50,42 @@ struct PetState {
   uint16_t gamesWon, careCount, bestRain;
 };
 
-enum Accessory : uint8_t { HAT_NONE, HAT_BOW, HAT_CROWN, HAT_BERET, HAT_PARTY, HAT_SAKURA, HAT_COUNT };
+// Index = Accessory. Omamori and hachimaki are earned only (omikuji collection, focus sessions), never in a gift.
+enum Accessory : uint8_t {
+  HAT_NONE, HAT_BOW, HAT_CROWN, HAT_BERET, HAT_PARTY, HAT_SAKURA, HAT_OMAMORI, HAT_HACHIMAKI, HAT_COUNT
+};
+constexpr uint8_t HAT_GIFTABLE = HAT_SAKURA + 1;
+
+// A calendar date. Days are counted with civil(), so countdowns and "once a day" follow the local calendar.
+struct Date {
+  uint16_t y;
+  uint8_t m, d;
+};
+int32_t civil(Date d);  // days since 1970-01-01
+
+enum class Occasion : uint8_t { None, Hina, Sakura, Kodomo, Tanabata, Halloween, Sinterklaas, Christmas, NewYear,
+                                Birthday, Anniversary, HomeDay };
+
+struct PetExtra;
+// What today is: a public holiday or season, or one of the private dates the relay sent (birthday first).
+Occasion occasion(const Date& today, const PetExtra& x);
+
+// Everything added in 0.4. Saved under its own key so a rollback to an older firmware still finds PetState
+// exactly as it left it. Zeroed when missing.
+struct PetExtra {
+  static constexpr int WORDS = 8, WORD_LEN = 24, DATES = 4;
+  uint16_t version;
+  Date home;                       // Matthieu's return day; y == 0 when unset
+  int32_t omikujiDay;              // civil day of the last draw
+  uint8_t omikujiGrade, omikujiSeen;
+  uint8_t bestDance;
+  uint16_t jankenWins, focusCount, rivalRain;
+  struct Special { uint8_t m, d, kind; } dates[DATES];  // kind: 1 birthday, 2 anniversary
+  int32_t greetedDay;              // civil day the occasion/countdown greeting last played
+  struct Word { char text[WORD_LEN + 1]; uint32_t at; } words[WORDS];
+  char who[13];                    // whose birthday it is, for the banner
+  int16_t lastCardDays;            // days shown on the last countdown card, so only a number she saw gets crossed off
+};
 
 class Pet {
  public:
@@ -84,6 +119,20 @@ class Pet {
   const PetState& state() const { return s_; }
   bool load(const PetState& st);  // false if the version doesn't match
 
+  // 0.4 additions (see PetExtra).
+  static constexpr uint16_t EXTRA_VERSION = 1;
+  const PetExtra& extra() const { return x_; }
+  PetExtra& extraMut() { return x_; }
+  void loadExtra(const PetExtra& x);
+  bool learnWord(const char* text, uint32_t now);  // false when it already knows it
+  bool forgetWord(const char* text);
+  int wordCount() const;
+  bool canDrawOmikuji(int32_t today) const { return x_.omikujiDay != today && s_.stage != Stage::Egg && s_.stage != Stage::Gone; }
+  int drawOmikuji(int32_t today, uint32_t rnd);  // grade 0..5 (大吉..凶), or -1 if already drawn today
+  void recordDance(int score);
+  void recordJanken(bool won);
+  void recordFocus();
+
  private:
   void step(uint32_t now, uint32_t dt);
   void grow(uint32_t now);
@@ -92,5 +141,6 @@ class Pet {
   int pendingUnlock_ = -1;
 
   PetState s_;
+  PetExtra x_{};
   HourFn hour_;
 };

@@ -27,6 +27,7 @@ String key;
 SemaphoreHandle_t mu = xSemaphoreCreateMutex();
 std::vector<String> inbox;   // raw JSON commands waiting for the main loop
 std::vector<Ack> acks;       // results waiting for the next poll
+std::vector<String> events;  // things that happened here, for the relay (cloud::event)
 std::vector<String> shows;   // notes and pictures waiting their turn on the screen
 int pendingMsgAck = -1;      // note on screen: ack when it has scrolled by
 String pendingMsg;           // ... and the command itself, to replay it if something interrupts it
@@ -35,6 +36,8 @@ int seenAt = 0;
 volatile uint32_t lastOk = 0, attempts = 0;
 char lastErr[64] = "none";
 String lastMsg = "null";
+String lastHug = "null";
+String wxJson = "null";  // {"kind","temp","place"} for the page
 
 struct Locked {
   Locked() { xSemaphoreTake(mu, portMAX_DELAY); }
@@ -62,8 +65,13 @@ String body() {
       o["id"] = k.id;
       o["result"] = k.result;
     }
+    JsonArray ev = doc["events"].to<JsonArray>();
+    for (auto& e : events) {
+      JsonDocument one;
+      if (!deserializeJson(one, e)) ev.add(one);
+    }
     // Long-poll only when we have nothing to report, so results arrive quickly.
-    doc["wait"] = acks.empty() ? 8 : 0;
+    doc["wait"] = acks.empty() && events.empty() ? 8 : 0;
   }
   String s;
   serializeJson(doc, s);
@@ -72,10 +80,11 @@ String body() {
 
 bool poll() {
   String req = body();
-  size_t sentAcks;
+  size_t sentAcks, sentEvents;
   {
     Locked l;
     sentAcks = acks.size();
+    sentEvents = events.size();
   }
   esp_http_client_config_t cfg = {};
   cfg.url = RELAY_URL;
@@ -108,6 +117,7 @@ bool poll() {
         ok = true;
         Locked l;
         acks.erase(acks.begin(), acks.begin() + sentAcks);
+        events.erase(events.begin(), events.begin() + min(sentEvents, events.size()));  // the cap may have dropped some
         for (JsonObject cmd : doc["commands"].as<JsonArray>()) {
           String s;
           serializeJson(cmd, s);
@@ -167,7 +177,7 @@ void apply(JsonDocument& cmd, const String& raw) {
   int id = cmd["id"] | 0;
   String type = cmd["type"] | "";
   uint32_t now = millis();
-  if (type == "msg" || type == "pic") {  // one thing on the screen at a time, in order
+  if (type == "msg" || type == "pic" || type == "hug") {  // one thing on the screen at a time, in order
     shows.push_back(raw);
     return;
   }
@@ -199,6 +209,45 @@ void apply(JsonDocument& cmd, const String& raw) {
       app::requestSave();
     }
     ack(id, n ? "ok" : "bad");
+  } else if (type == "home") {  // Matthieu's return day, from /home; y = 0 clears it
+    PetExtra& x = app::pet.extraMut();
+    x.home = {uint16_t(cmd["y"] | 0), uint8_t(cmd["m"] | 0), uint8_t(cmd["d"] | 0)};
+    if (!x.home.m || !x.home.d) x.home = {};
+    app::requestSave();
+    ack(id, "ok");
+  } else if (type == "word" || type == "forget") {  // /teach and /forget
+    String text = cmd["text"] | "";
+    text.trim();
+    bool done = type == "word" ? app::pet.learnWord(text.c_str(), app::epoch()) : app::pet.forgetWord(text.c_str());
+    if (done) app::requestSave();
+    ack(id, done ? "ok" : type == "word" ? "known" : "unknown-word");
+  } else if (type == "wx") {  // the weather where Haruki is, refreshed by the relay
+    String k = cmd["kind"] | "clear";
+    Weather w = k == "rain" ? Weather::Rain : k == "snow" ? Weather::Snow : k == "hot" ? Weather::Hot
+              : k == "cold" ? Weather::Cold : Weather::Clear;
+    app::ui.setWeather(w, now);
+    wxJson = "";
+    JsonDocument j;
+    j["kind"] = k;
+    j["temp"] = cmd["temp"] | 0;
+    j["place"] = cmd["place"] | "";
+    serializeJson(j, wxJson);
+    ack(id, "ok");
+  } else if (type == "dates") {  // private dates (her birthday) live on the relay, never in the public code
+    PetExtra& x = app::pet.extraMut();
+    memset(x.dates, 0, sizeof x.dates);
+    int i = 0;
+    for (JsonObject d : cmd["list"].as<JsonArray>()) {
+      if (i >= PetExtra::DATES) break;
+      x.dates[i++] = {uint8_t(d["m"] | 0), uint8_t(d["d"] | 0), uint8_t(d["kind"] | 0)};
+    }
+    snprintf(x.who, sizeof x.who, "%s", (const char*)(cmd["who"] | ""));
+    app::requestSave();
+    ack(id, "ok");
+  } else if (type == "rival") {  // Matthieu's best Feather Catch score, for Seed Rain
+    app::pet.extraMut().rivalRain = cmd["score"] | 0;
+    app::requestSave();
+    ack(id, "ok");
   } else if (type == "pair") {
     String code = cmd["code"] | "0";
     app::ui.showCode(code.toInt(), "TELEGRAM", now, 3 * 60 * 1000);
@@ -231,6 +280,16 @@ void show(const String& raw) {
     prefs.putString("msg", lastMsg);
     pendingMsgAck = id;
     pendingMsg = raw;
+  } else if (String(cmd["type"] | "") == "hug") {
+    String from = cmd["from"] | "";
+    app::ui.showHug(from.c_str(), now);
+    JsonDocument h;
+    h["from"] = from;
+    h["at"] = app::epoch();
+    lastHug = "";
+    serializeJson(h, lastHug);
+    prefs.putString("hug", lastHug);
+    ack(id, "shown");
   } else {
     static uint8_t frames[8][100];
     int n = 0;
@@ -262,6 +321,7 @@ void begin() {
   prefs.begin("cloud", false);
   key = prefs.getString("key", "");
   lastMsg = prefs.getString("msg", "null");
+  lastHug = prefs.getString("hug", "null");
   xTaskCreatePinnedToCore(task, "cloud", 10240, nullptr, 1, nullptr, 0);
 }
 
@@ -307,5 +367,15 @@ void setKey(const String& hex) {
 }
 
 String lastMessageJson() { return lastMsg; }
+
+String lastHugJson() { return lastHug; }
+
+String weatherJson() { return wxJson; }
+
+void event(const String& json) {
+  Locked l;
+  if (events.size() >= 16) events.erase(events.begin());
+  events.push_back(json);
+}
 
 }  // namespace cloud

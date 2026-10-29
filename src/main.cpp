@@ -20,6 +20,13 @@ static int localHour(uint32_t epoch) {
   return tm.tm_hour;
 }
 
+static Date localDate(uint32_t epoch) {
+  time_t t = epoch;
+  struct tm tm;
+  localtime_r(&t, &tm);
+  return {uint16_t(tm.tm_year + 1900), uint8_t(tm.tm_mon + 1), uint8_t(tm.tm_mday)};
+}
+
 namespace app {
 Pet pet(localHour);
 Ui ui(pet, esp_random());
@@ -52,6 +59,7 @@ void backlight(uint8_t level) { ledcWrite(PIN_LCD_BL, level); }
 void save() {
   app::Lock lock;
   storage::savePet(app::pet.state());
+  storage::saveExtra(app::pet.extra());
   if (clockTrusted()) storage::setLastEpoch(app::epoch());
   lastSave = millis();
   saveWanted = false;
@@ -104,6 +112,8 @@ uint32_t epoch() {
 }
 
 void requestSave() { saveWanted = true; }
+
+Date today() { return clockTrusted() ? localDate(epoch()) : Date{}; }
 
 void frameHex(char out[201]) {
   uint8_t packed[LCD_W * LCD_H / 8];
@@ -189,6 +199,7 @@ void setup() {
   if (storage::loadPet(st)) app::pet.load(st);
   else if (bootReal) app::pet.reset(app::epoch());
   // else: keep the constructor's egg; it starts its clock once real time is known
+  storage::loadExtra(app::pet);
 
   net::begin();
   web::begin();
@@ -226,10 +237,13 @@ void loop() {
     env.pairActive = app::pairActive();
     env.pairCode = pairCode;
     env.otaProgress = ota::progress();
+    env.today = app::today();
     if (net::takeVisitor() && app::ui.screen() == Screen::Main) app::ui.visitor(now);
     app::ui.update(env);
 
     if (app::ui.takeDirty()) saveWanted = true;
+    if (int sc = app::ui.takeRainRecord()) cloud::event(String("{\"type\":\"rain\",\"score\":") + sc + "}");
+    if (int m = app::ui.takeFocusDone()) cloud::event(String("{\"type\":\"focus\",\"minutes\":") + m + "}");
 
     // A learned tune gets whistled now and then while the bird is awake and content.
     const PetState& s = app::pet.state();
