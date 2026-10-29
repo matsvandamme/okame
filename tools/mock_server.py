@@ -40,6 +40,9 @@ class H(BaseHTTPRequestHandler):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        if ctype == "text/html":  # same policy as the dongle (src/web.cpp), so blocked loads show up here too
+            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                             "script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data:")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

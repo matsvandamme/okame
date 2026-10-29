@@ -293,7 +293,7 @@ void sendIndex(AsyncWebServerRequest* r) {
   res->addHeader("Content-Encoding", "gzip");
   res->addHeader("Cache-Control", "no-cache");
   res->addHeader("Content-Security-Policy",
-                 "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:");
+                 "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data:");
   r->send(res);
 }
 }  // namespace
