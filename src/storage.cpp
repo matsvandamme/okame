@@ -19,6 +19,17 @@ bool loadPet(PetState& out) {
 
 void savePet(const PetState& st) { prefs.putBytes("pet", &st, sizeof st); }
 
+void loadExtra(Pet& pet) {
+  size_t len = prefs.getBytesLength("pet2");
+  if (len < 2 || len > sizeof(PetExtra)) return;
+  static PetExtra x;  // ~300 bytes: keep it off the loop task's stack
+  memset(&x, 0, sizeof x);
+  prefs.getBytes("pet2", &x, len);
+  pet.loadExtra(x);
+}
+
+void saveExtra(const PetExtra& x) { prefs.putBytes("pet2", &x, sizeof x); }
+
 int loadNetworks(SavedNetwork* out, int max) {
   size_t len = prefs.getBytesLength("nets");
   int n = len / sizeof(SavedNetwork);

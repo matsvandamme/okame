@@ -221,11 +221,11 @@ int main(int argc, char** argv) {
   }
   {  // Hats on every stage, Seed Rain and the gift
     Sim s;
-    const char* hats[] = {"", "bow", "crown", "beret", "party", "sakura"};
+    const char* hats[] = {"", "bow", "crown", "beret", "party", "sakura", "omamori", "hachimaki"};
     Stage stages[] = {Stage::Chick, Stage::Juvenile, Stage::Adult};
     const char* sn[] = {"chick", "juv", "adult"};
     for (int st = 0; st < 3; st++)
-      for (int h = 1; h < 6; h++) {
+      for (int h = 1; h < HAT_COUNT; h++) {
         s.stage(stages[st], Variant::Pearl);
         PetState ps = s.pet.state();
         ps.hat = h;
@@ -254,6 +254,152 @@ int main(int argc, char** argv) {
     s.shot("94_mail");
     s.run(2600);
     s.shot("95_message");
+  }
+  {  // 0.4: love and hugs
+    Sim s;
+    s.stage(Stage::Adult, Variant::Pearl);
+    s.run(300);
+    s.ui.love(s.t);
+    s.run(900);
+    s.shot("a01_love");
+    s.ui.showHug("Matthieu", s.t);
+    s.run(700);
+    s.shot("a02_hug_from");
+    s.run(1700);
+    s.shot("a03_hug_heart");
+    s.run(400);
+    s.shot("a04_hug_beat");
+  }
+  {  // 0.4: countdown to Matthieu's return
+    Sim s;
+    s.stage(Stage::Adult, Variant::Pearl);
+    s.env.today = {2026, 11, 20};
+    s.pet.extraMut().home = {2026, 12, 2};
+    s.pet.extraMut().greetedDay = civil(s.env.today) - 1;  // first time today: crosses yesterday off
+    s.pet.extraMut().lastCardDays = 13;                    // ...because yesterday's card said 13
+    s.run(200);
+    s.run(1500);
+    s.shot("a10_countdown_cross");
+    s.run(1500);
+    s.shot("a11_countdown");
+    s.pet.extraMut().home = {2026, 11, 20};
+    s.pet.extraMut().greetedDay = 0;
+    s.run(2100);
+    s.run(600);
+    s.shot("a12_home_text");
+    s.run(1800);
+    s.shot("a13_home_party");
+  }
+  {  // 0.4: words Matthieu taught
+    Sim s;
+    s.stage(Stage::Adult, Variant::Pearl);
+    s.run(300);
+    s.ui.say("I LOVE YOU", true, s.t);
+    s.run(400);
+    s.shot("a20_say_learning");
+    s.ui.say("OYASUMI", false, s.t);
+    s.run(400);
+    s.shot("a21_say_word");
+    s.ui.say("GOEDEMORGEN HARUKI", false, s.t);
+    s.run(1500);
+    s.shot("a22_say_scroll");
+  }
+  {  // 0.4: janken, dance, omikuji
+    Sim s;
+    s.stage(Stage::Adult, Variant::Pearl);
+    s.run(300);
+    s.ui.startGame(Ui::Game::Janken, s.t);
+    s.run(700);
+    s.shot("a30_janken_ken");
+    s.ui.gameInput(Press::Three, s.t);  // paper
+    s.run(900);
+    s.shot("a31_janken_reveal");
+    s.run(1200);
+    s.run(1300);
+    s.shot("a32_janken_pon");
+    s.ui.startGame(Ui::Game::Dance, s.t);
+    s.run(1000);
+    s.shot("a33_dance_show");
+    s.run(3500);
+    s.shot("a34_dance_your_turn");
+    s.ui.gameInput(Press::Up, s.t);
+    s.run(100);
+    s.shot("a35_dance_echo_hop");
+    for (int g = 0; g < 6; g++) {
+      s.ui.forceScreen(Screen::Main, s.t);
+      s.ui.showOmikuji(g, s.t);
+      if (g == 0) {
+        s.run(700);
+        s.shot("a40_omikuji_shake");
+        s.run(1100);
+        s.shot("a41_omikuji_stick");
+        s.run(1000);
+      } else {
+        s.run(2800);
+      }
+      char name[32];
+      snprintf(name, sizeof name, "a4%d_omikuji_%d", g + 2, g);
+      s.shot(name);
+    }
+    s.run(1700);
+    s.shot("a48_omikuji_kyo_comfort");
+  }
+  {  // 0.4: seasons, special days and weather
+    struct { Date d; const char* n; } days[] = {
+        {{2027, 6, 1}, "a50_occ_birthday"}, {{2027, 3, 3}, "a51_occ_hina"},     {{2027, 3, 30}, "a52_occ_sakura"},
+        {{2027, 5, 5}, "a53_occ_kodomo"},    {{2027, 7, 7}, "a54_occ_tanabata"}, {{2026, 10, 31}, "a55_occ_halloween"},
+        {{2026, 12, 6}, "a56_occ_sint"},     {{2026, 12, 25}, "a57_occ_xmas"},   {{2027, 1, 1}, "a58_occ_newyear"},
+    };
+    for (auto& d : days) {
+      Sim s;
+      s.stage(Stage::Adult, Variant::Pearl);
+      s.pet.extraMut().dates[0] = {6, 1, 1};  // a made-up birthday; the real one is sent by the relay
+      snprintf(s.pet.extraMut().who, 13, "HARUKI");
+      s.env.today = d.d;
+      s.run(800);
+      std::string n = d.n;
+      s.shot((n + "_hello").c_str());
+      if (n == "a50_occ_birthday") {
+        s.run(900);
+        s.shot((n + "_name").c_str());
+      }
+      s.run(3000);
+      s.shot((n + "_party").c_str());
+      s.run(3000);
+      s.shot((n + "_main").c_str());
+    }
+    Weather w[] = {Weather::Rain, Weather::Snow, Weather::Hot, Weather::Cold};
+    const char* wn[] = {"a60_wx_rain", "a61_wx_snow", "a62_wx_hot", "a63_wx_cold"};
+    for (int i = 0; i < 4; i++) {
+      Sim s;
+      s.stage(i % 2 ? Stage::Chick : Stage::Adult, Variant::Pearl);
+      s.ui.setWeather(w[i], s.t);
+      s.run(900);
+      s.shot(wn[i]);
+    }
+  }
+  {  // 0.4: focus buddy
+    Sim s;
+    s.stage(Stage::Adult, Variant::Pearl);
+    s.run(300);
+    s.ui.startFocus(25, s.t);
+    s.run(60000);
+    s.shot("a70_focus");
+    s.run(24 * 60000 - 20000);
+    s.shot("a71_focus_seconds");
+    s.run(21000);
+    s.run(800);
+    s.shot("a72_focus_done");
+    s.run(2600);
+    s.shot("a73_focus_break");
+  }
+  {  // 0.4: Seed Rain against Matthieu's Feather Catch score
+    Sim s;
+    s.stage(Stage::Adult, Variant::Pearl);
+    s.pet.extraMut().rivalRain = 14;
+    s.ui.startGame(Ui::Game::Rain, s.t);
+    s.run(2500);
+    s.shot("a80_rain_vs");
   }
   {  // Frame sequence of the main screen for the web mock server
     Sim s;

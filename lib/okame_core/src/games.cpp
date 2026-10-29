@@ -179,3 +179,110 @@ void SeedRain::input(Press p) {
   if (birdX_ < 0) birdX_ = 0;
   if (birdX_ > 40 - birdW_) birdX_ = 40 - birdW_;
 }
+
+int Janken::outcome(Hand you, Hand bird) {
+  if (you == bird) return 0;
+  return (you == Rock && bird == Scissors) || (you == Scissors && bird == Paper) || (you == Paper && bird == Rock)
+             ? 1 : -1;
+}
+
+void Janken::start(uint32_t seed, uint32_t now) {
+  rng_ = Rng(seed);
+  wins_ = losses_ = throws_ = last_ = 0;
+  phase_ = Phase::Chant;
+  t0_ = now;
+}
+
+void Janken::update(uint32_t now) {
+  uint32_t el = now - t0_;
+  if (phase_ == Phase::Chant && el >= TIMEOUT_MS) {
+    phase_ = Phase::Done;  // nobody threw: the bird wanders off
+  } else if (phase_ == Phase::Reveal && el >= REVEAL_MS) {
+    bool over = wins_ >= TO_WIN || losses_ >= TO_WIN || throws_ >= MAX_THROWS;
+    phase_ = over ? Phase::Done : Phase::Chant;
+    t0_ = now;
+  }
+}
+
+void Janken::input(Hand h, uint32_t now) {
+  if (phase_ != Phase::Chant) return;
+  you_ = h;
+  bird_ = Hand(rng_.range(0, 2));
+  last_ = outcome(you_, bird_);
+  if (last_ > 0) wins_++;
+  if (last_ < 0) losses_++;
+  throws_++;
+  phase_ = Phase::Reveal;
+  t0_ = now;
+}
+
+void Dance::start(uint32_t seed, uint32_t now) {
+  rng_ = Rng(seed);
+  for (auto& m : seq_) m = Move(rng_.range(0, 3));
+  len_ = START;
+  best_ = 0;
+  echo_ = -1;
+  beginRound(now);
+}
+
+void Dance::beginRound(uint32_t now) {
+  entered_ = 0;
+  showIdx_ = -1;
+  phase_ = Phase::Showing;
+  t0_ = now;
+}
+
+void Dance::update(uint32_t now) {
+  uint32_t el = now - t0_;
+  switch (phase_) {
+    case Phase::Showing: {
+      uint32_t t = 700;  // lead-in
+      showIdx_ = -1;
+      for (int i = 0; i < len_; i++) {
+        if (el >= t && el < t + MOVE_MS) showIdx_ = i;
+        t += MOVE_MS + GAP_MS;
+      }
+      if (el >= t) {
+        phase_ = Phase::Listening;
+        t0_ = now;
+      }
+      break;
+    }
+    case Phase::Listening:
+      if (el >= TIMEOUT_MS) {
+        phase_ = Phase::Fail;
+        t0_ = now;
+      }
+      break;
+    case Phase::Good:
+      if (el >= RESULT_MS) {
+        if (len_ >= MAX) {
+          phase_ = Phase::Done;
+        } else {
+          len_++;
+          beginRound(now);
+        }
+      }
+      break;
+    case Phase::Fail:
+      if (el >= RESULT_MS) phase_ = Phase::Done;
+      break;
+    case Phase::Done:
+      break;
+  }
+}
+
+void Dance::input(Move m, uint32_t now) {
+  if (phase_ != Phase::Listening) return;
+  echo_ = m;
+  echoAt_ = now;
+  t0_ = now;  // each move resets the timeout
+  if (m != seq_[entered_]) {
+    phase_ = Phase::Fail;
+    return;
+  }
+  if (++entered_ == len_) {
+    best_ = len_;
+    phase_ = Phase::Good;
+  }
+}

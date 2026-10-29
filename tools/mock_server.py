@@ -24,6 +24,19 @@ STATE = {
             "translation": "おはよう！今日は傘を忘れないでね ☔", "at": int(time.time()) - 600} if "--note" in sys.argv else None,
     "game": {"type": "duet", "phase": "listening", "round": 1, "rounds": 3, "wins": 1, "length": 4, "entered": 2} if "--game" in sys.argv else None,
 }
+FULL = "--full" in sys.argv  # every 0.4 feature switched on, for screenshots
+if FULL:
+    STATE.update({
+        "fw": "0.4.0",
+        "hug": {"from": "Matthieu", "at": int(time.time()) - 2 * 3600},
+        "homeDays": 12,
+        "omikuji": {"today": 0, "seen": 0b100101, "day": 20777},
+        "bestDance": 6, "jankenWins": 3,
+        "wx": {"kind": "rain", "temp": 12, "place": "Home"},
+        "focusLeft": -1, "focusCount": 7, "rivalRain": 14,
+        "words": 3, "wordList": [{"t": "OYASUMI", "learning": False}, {"t": "I LOVE YOU", "learning": False},
+                                 {"t": "GOEDEMORGEN", "learning": True}],
+    })
 NETS = ["Home Wi-Fi", "Phone hotspot"]
 TOKEN = "f" * 32
 
@@ -91,13 +104,25 @@ class H(BaseHTTPRequestHandler):
         if self.path in ("/api/tune", "/api/networks/add", "/api/networks/remove", "/api/new-egg", "/api/ota/check"):
             return self.send(200, {"ok": True})
         if self.path == "/api/game-start":
-            STATE["game"] = {"type": q.get("g"), "phase": "listening" if q.get("g") == "duet" else "hidden",
-                             "round": 0, "rounds": 3 if q.get("g") == "duet" else 5, "wins": 0, "hits": 0}
+            g = q.get("g")
+            STATE["game"] = {"type": g, "phase": {"duet": "listening", "janken": "chant", "dance": "listening"}.get(g, "hidden"),
+                             "round": 0, "rounds": 3 if g == "duet" else 5, "wins": 0, "hits": 0, "losses": 1,
+                             "length": 4, "entered": 1, "best": 6}
             return self.send(200, {"ok": True})
         if self.path == "/api/game-input":
             return self.send(200, {"game": STATE.get("game")})
         if self.path == "/api/pair-request":
             return self.send(200, {"ok": True})
+        if self.path == "/api/omikuji":
+            STATE["omikuji"] = {"today": 1, "seen": (STATE.get("omikuji") or {}).get("seen", 0) | 2, "day": 20777}
+            return self.send(200, {"grade": 1})
+        if self.path == "/api/focus":
+            STATE["focusLeft"] = int(q.get("min", 0)) * 60 - 1 if int(q.get("min", 0)) else -1
+            return self.send(200, {"ok": True})
+        if self.path in ("/api/love", "/api/wear", "/api/say"):
+            return self.send(200, {"ok": True})
+        if self.path == "/api/gift":
+            return self.send(200, {"gift": -1})
         if self.path == "/api/practice":
             return self.send(200, {"learned": True, "level": 3})
         self.send(404, {"error": "not found"})

@@ -8,6 +8,13 @@ static uint8_t inc(uint8_t v, uint8_t max) { return v < max ? v + 1 : max; }
 
 void Pet::reset(uint32_t now) {
   memset(&s_, 0, sizeof s_);
+  // A new egg starts its own scores and words; the dates the relay set (birthday, return day) stay.
+  PetExtra keep = x_;
+  memset(&x_, 0, sizeof x_);
+  x_.version = EXTRA_VERSION;
+  x_.home = keep.home;
+  memcpy(x_.dates, keep.dates, sizeof x_.dates);
+  memcpy(x_.who, keep.who, sizeof x_.who);
   s_.version = VERSION;
   s_.stage = Stage::Egg;
   s_.hunger = s_.happy = 3;
@@ -245,7 +252,7 @@ int Pet::openGift(uint32_t now, uint32_t rnd) {
   // Half the time a still-locked accessory, otherwise a treat.
   uint8_t locked[HAT_COUNT];
   int n = 0;
-  for (uint8_t a = 1; a < HAT_COUNT; a++)
+  for (uint8_t a = 1; a < HAT_GIFTABLE; a++)
     if (!(s_.unlocked & (1u << a))) locked[n++] = a;
   if (n && rnd % 2 == 0) {
     unlock(locked[(rnd / 2) % n]);
@@ -261,4 +268,102 @@ void Pet::recordGame(bool won, int rainScore) {
   if (rainScore > s_.bestRain) s_.bestRain = rainScore;
   if (s_.gamesWon >= 3) unlock(HAT_CROWN);
   if (rainScore >= 15) unlock(HAT_PARTY);
+}
+
+// ---------------------------------------------------------------- 0.4 additions
+
+int32_t civil(Date d) {
+  // Howard Hinnant's days_from_civil.
+  int y = d.y - (d.m <= 2);
+  int era = (y >= 0 ? y : y - 399) / 400;
+  unsigned yoe = (unsigned)(y - era * 400);
+  unsigned doy = (153 * (d.m + (d.m > 2 ? -3 : 9)) + 2) / 5 + d.d - 1;
+  unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + (int32_t)doe - 719468;
+}
+
+void Pet::loadExtra(const PetExtra& x) {
+  if (x.version != EXTRA_VERSION) return;
+  x_ = x;
+  x_.who[sizeof x_.who - 1] = 0;
+  for (auto& w : x_.words) w.text[PetExtra::WORD_LEN] = 0;
+}
+
+int Pet::wordCount() const {
+  int n = 0;
+  for (auto& w : x_.words) n += w.text[0] != 0;
+  return n;
+}
+
+bool Pet::learnWord(const char* text, uint32_t now) {
+  if (!text || !*text) return false;
+  for (auto& w : x_.words)
+    if (!strncmp(w.text, text, PetExtra::WORD_LEN)) return false;
+  // A free slot, else forget the oldest word.
+  PetExtra::Word* slot = &x_.words[0];
+  for (auto& w : x_.words) {
+    if (!w.text[0]) { slot = &w; break; }
+    if (w.at < slot->at) slot = &w;
+  }
+  strncpy(slot->text, text, PetExtra::WORD_LEN);
+  slot->text[PetExtra::WORD_LEN] = 0;
+  slot->at = now ? now : 1;
+  return true;
+}
+
+bool Pet::forgetWord(const char* text) {
+  for (auto& w : x_.words)
+    if (w.text[0] && !strncmp(w.text, text, PetExtra::WORD_LEN)) {
+      memset(&w, 0, sizeof w);
+      return true;
+    }
+  return false;
+}
+
+int Pet::drawOmikuji(int32_t today, uint32_t rnd) {
+  if (!canDrawOmikuji(today)) return -1;
+  // 大吉 16%, 中吉 22%, 小吉 22%, 吉 20%, 末吉 14%, 凶 6%: mostly good news, like a real shrine.
+  static const uint8_t CUM[] = {16, 38, 60, 80, 94, 100};
+  uint32_t r = rnd % 100;
+  int g = 0;
+  while (r >= CUM[g]) g++;
+  x_.omikujiDay = today;
+  x_.omikujiGrade = g;
+  x_.omikujiSeen |= 1u << g;
+  if (x_.omikujiSeen == 0x3f) unlock(HAT_OMAMORI);
+  if (g == 0) s_.happy = inc(s_.happy, MAX_STAT);
+  return g;
+}
+
+void Pet::recordDance(int score) {
+  if (score > x_.bestDance) x_.bestDance = score;
+  recordGame(score >= 5, 0);
+}
+
+void Pet::recordJanken(bool won) {
+  if (won) x_.jankenWins++;
+  recordGame(won, 0);
+}
+
+void Pet::recordFocus() {
+  x_.focusCount++;
+  if (x_.focusCount % 10 == 0) unlock(HAT_HACHIMAKI);
+  if (s_.affection < 1000) s_.affection += 5;
+}
+
+Occasion occasion(const Date& t, const PetExtra& x) {
+  if (!t.y) return Occasion::None;
+  for (int kind = 1; kind <= 2; kind++)
+    for (const auto& d : x.dates)
+      if (d.kind == kind && d.m == t.m && d.d == t.d) return kind == 1 ? Occasion::Birthday : Occasion::Anniversary;
+  int md = t.m * 100 + t.d;
+  if (md == 303) return Occasion::Hina;
+  if (md >= 325 && md <= 410) return Occasion::Sakura;
+  if (md == 505) return Occasion::Kodomo;
+  if (md == 707) return Occasion::Tanabata;
+  if (md == 1031) return Occasion::Halloween;
+  if (md == 1205 || md == 1206) return Occasion::Sinterklaas;
+  if (md >= 1224 && md <= 1226) return Occasion::Christmas;
+  if (md == 1231 || md <= 103) return Occasion::NewYear;
+  return Occasion::None;
 }

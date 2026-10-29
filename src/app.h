@@ -14,6 +14,7 @@ struct Lock {
   ~Lock() { xSemaphoreGiveRecursive(mutex); }
 };
 uint32_t epoch();
+Date today();  // local date, y == 0 until the clock is known
 void requestSave();
 void frameHex(char out[201]);
 bool pairActive();

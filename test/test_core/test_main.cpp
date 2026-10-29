@@ -1,6 +1,8 @@
+#include <stdio.h>
 #include <unity.h>
 #include "games.h"
 #include "pet.h"
+#include "ui.h"
 
 using namespace rules;
 
@@ -213,6 +215,123 @@ void test_peekaboo_hits_only_while_peeking() {
   TEST_ASSERT_TRUE(p.won());
 }
 
+// ---------------------------------------------------------------- 0.4
+
+void test_civil_days() {
+  TEST_ASSERT_EQUAL_INT32(0, civil({1970, 1, 1}));
+  TEST_ASSERT_EQUAL_INT32(20755, civil({2026, 10, 29}));  // same as Python date arithmetic
+  TEST_ASSERT_EQUAL_INT32(1, civil({2027, 1, 1}) - civil({2026, 12, 31}));  // year wrap
+  TEST_ASSERT_EQUAL_INT32(29, civil({2028, 3, 1}) - civil({2028, 2, 1}));   // leap year
+}
+
+void test_days_to_home() {
+  Pet p = hatched();
+  Ui ui(p);
+  TEST_ASSERT_EQUAL(-1, ui.daysToHome({2026, 11, 20}));  // not set
+  p.extraMut().home = {2026, 12, 2};
+  TEST_ASSERT_EQUAL(12, ui.daysToHome({2026, 11, 20}));
+  TEST_ASSERT_EQUAL(0, ui.daysToHome({2026, 12, 2}));
+  TEST_ASSERT_EQUAL(-1, ui.daysToHome({2026, 12, 3}));  // passed
+  TEST_ASSERT_EQUAL(-1, ui.daysToHome({0, 0, 0}));      // clock unknown
+}
+
+void test_new_egg_keeps_relay_dates_but_not_scores() {
+  Pet p = hatched();
+  p.extraMut().home = {2026, 12, 2};
+  p.extraMut().bestDance = 7;
+  p.learnWord("HI", T0);
+  p.reset(T0 + DAY);
+  TEST_ASSERT_EQUAL(2026, p.extra().home.y);
+  TEST_ASSERT_EQUAL(0, p.extra().bestDance);
+  TEST_ASSERT_EQUAL(0, p.wordCount());
+}
+
+void test_words_learn_forget_and_cap() {
+  Pet p = hatched();
+  TEST_ASSERT_TRUE(p.learnWord("OYASUMI", T0));
+  TEST_ASSERT_FALSE(p.learnWord("OYASUMI", T0 + 1));  // already known
+  char w[8];
+  for (int i = 0; i < 10; i++) {
+    snprintf(w, sizeof w, "W%d", i);
+    p.learnWord(w, T0 + 10 + i);
+  }
+  TEST_ASSERT_EQUAL(PetExtra::WORDS, p.wordCount());  // the oldest were forgotten
+  TEST_ASSERT_TRUE(p.forgetWord("W9"));
+  TEST_ASSERT_FALSE(p.forgetWord("NOPE"));
+}
+
+void test_omikuji_once_a_day_and_collection() {
+  Pet p = hatched();
+  int32_t day = civil({2026, 11, 20});
+  int g = p.drawOmikuji(day, 0);
+  TEST_ASSERT_EQUAL(0, g);  // 0 -> 大吉
+  TEST_ASSERT_EQUAL(-1, p.drawOmikuji(day, 99));
+  TEST_ASSERT_FALSE(p.canDrawOmikuji(day));
+  // One of each grade over six days unlocks the omamori.
+  uint32_t rolls[] = {20, 40, 70, 85, 97};
+  for (int i = 0; i < 5; i++) p.drawOmikuji(day + 1 + i, rolls[i]);
+  TEST_ASSERT_EQUAL_HEX8(0x3f, p.extra().omikujiSeen);
+  TEST_ASSERT_TRUE(p.state().unlocked & (1u << HAT_OMAMORI));
+}
+
+void test_gift_never_gives_earned_only_accessories() {
+  Pet p = hatched();
+  for (uint32_t d = 0; d < 40; d++) p.openGift(T0 + d * DAY, d * 2);  // even rnd = always an accessory if any
+  TEST_ASSERT_FALSE(p.state().unlocked & (1u << HAT_OMAMORI));
+  TEST_ASSERT_FALSE(p.state().unlocked & (1u << HAT_HACHIMAKI));
+}
+
+void test_janken_outcomes() {
+  TEST_ASSERT_EQUAL(1, Janken::outcome(Janken::Rock, Janken::Scissors));
+  TEST_ASSERT_EQUAL(1, Janken::outcome(Janken::Scissors, Janken::Paper));
+  TEST_ASSERT_EQUAL(1, Janken::outcome(Janken::Paper, Janken::Rock));
+  TEST_ASSERT_EQUAL(-1, Janken::outcome(Janken::Rock, Janken::Paper));
+  TEST_ASSERT_EQUAL(0, Janken::outcome(Janken::Paper, Janken::Paper));
+}
+
+void test_janken_ends_at_two_wins() {
+  Janken j;
+  uint32_t t = 1000;
+  j.start(42, t);
+  for (int i = 0; i < 20 && j.phase() != Janken::Phase::Done; i++) {
+    j.input(Janken::Rock, t);
+    t += Janken::REVEAL_MS;
+    j.update(t);
+  }
+  TEST_ASSERT_EQUAL(Janken::Phase::Done, j.phase());
+  TEST_ASSERT_TRUE(j.wins() == 2 || j.losses() == 2 || j.wins() + j.losses() <= Janken::MAX_THROWS);
+}
+
+void test_janken_times_out() {
+  Janken j;
+  j.start(1, 0);
+  j.update(Janken::TIMEOUT_MS + 1);
+  TEST_ASSERT_EQUAL(Janken::Phase::Done, j.phase());
+  TEST_ASSERT_FALSE(j.won());
+}
+
+static void danceShow(Dance& d, uint32_t& t) {
+  while (d.phase() == Dance::Phase::Showing) { t += 50; d.update(t); }
+}
+
+void test_dance_copy_grows_and_mistake_ends() {
+  Dance d;
+  uint32_t t = 0;
+  d.start(7, t);
+  danceShow(d, t);
+  for (int i = 0; i < d.length(); i++) d.input(d.move(i), t += 100);
+  TEST_ASSERT_EQUAL(Dance::Phase::Good, d.phase());
+  TEST_ASSERT_EQUAL(3, d.score());
+  t += Dance::RESULT_MS; d.update(t);
+  TEST_ASSERT_EQUAL(4, d.length());
+  danceShow(d, t);
+  d.input(Dance::Move((d.move(0) + 1) % 4), t += 100);  // wrong first move
+  TEST_ASSERT_EQUAL(Dance::Phase::Fail, d.phase());
+  t += Dance::RESULT_MS; d.update(t);
+  TEST_ASSERT_EQUAL(Dance::Phase::Done, d.phase());
+  TEST_ASSERT_EQUAL(3, d.score());
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_egg_hatches_after_two_minutes);
@@ -233,5 +352,15 @@ int main() {
   RUN_TEST(test_duet_perfect_play_wins);
   RUN_TEST(test_duet_timeout_loses);
   RUN_TEST(test_peekaboo_hits_only_while_peeking);
+  RUN_TEST(test_civil_days);
+  RUN_TEST(test_days_to_home);
+  RUN_TEST(test_new_egg_keeps_relay_dates_but_not_scores);
+  RUN_TEST(test_words_learn_forget_and_cap);
+  RUN_TEST(test_omikuji_once_a_day_and_collection);
+  RUN_TEST(test_gift_never_gives_earned_only_accessories);
+  RUN_TEST(test_janken_outcomes);
+  RUN_TEST(test_janken_ends_at_two_wins);
+  RUN_TEST(test_janken_times_out);
+  RUN_TEST(test_dance_copy_grows_and_mistake_ends);
   return UNITY_END();
 }
