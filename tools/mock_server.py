@@ -14,6 +14,7 @@ from urllib.parse import parse_qs
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PAGE = (ROOT / "out" / "web" / "index.html").read_bytes()
 FRAMES = (ROOT / "out" / "web" / "frames.txt").read_text().split()
+ICON = (ROOT / "web" / "apple-touch-icon.png").read_bytes()
 SETUP = "--setup" in sys.argv
 STATE = {
     "name": "Mochi" if "--named" in sys.argv else "", "stage": "adult", "variant": "pearl", "hunger": 3,
@@ -66,6 +67,8 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             return self.send(200, PAGE, "text/html")
+        if self.path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png", "/favicon.ico"):
+            return self.send(200, ICON, "image/png")
         if self.path == "/api/state":
             return self.send(200, {**STATE, "frame": frame()})
         if self.path == "/api/settings":

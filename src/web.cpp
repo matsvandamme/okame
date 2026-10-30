@@ -405,12 +405,22 @@ void sendIndex(AsyncWebServerRequest* r) {
                  "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data:");
   r->send(res);
 }
+
+// The picture iOS puts on the home screen ("Add to Home Screen") and browsers show in the tab.
+void sendIcon(AsyncWebServerRequest* r) {
+  AsyncWebServerResponse* res = r->beginResponse(200, "image/png", WEB_ICON_PNG, sizeof WEB_ICON_PNG);
+  res->addHeader("Cache-Control", "max-age=86400");
+  r->send(res);
+}
 }  // namespace
 
 namespace web {
 
 void begin() {
   server.on("/", HTTP_GET, sendIndex);
+  server.on("/apple-touch-icon.png", HTTP_GET, sendIcon);
+  server.on("/apple-touch-icon-precomposed.png", HTTP_GET, sendIcon);  // older iOS asks for this name first
+  server.on("/favicon.ico", HTTP_GET, sendIcon);
   server.on("/api/state", HTTP_GET, [](AsyncWebServerRequest* r) { sendJson(r, 200, web::stateJson()); });
   server.on("/api/act", HTTP_POST, handleAct);
   server.on("/api/name", HTTP_POST, handleName);
