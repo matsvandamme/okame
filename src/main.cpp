@@ -60,6 +60,7 @@ void save() {
   app::Lock lock;
   storage::savePet(app::pet.state());
   storage::saveExtra(app::pet.extra());
+  storage::saveBirds(app::pet.birds());
   if (clockTrusted()) storage::setLastEpoch(app::epoch());
   lastSave = millis();
   saveWanted = false;
@@ -200,6 +201,7 @@ void setup() {
   else if (bootReal) app::pet.reset(app::epoch());
   // else: keep the constructor's egg; it starts its clock once real time is known
   storage::loadExtra(app::pet);
+  storage::loadBirds(app::pet);
 
   net::begin();
   web::begin();
@@ -238,12 +240,14 @@ void loop() {
     env.pairCode = pairCode;
     env.otaProgress = ota::progress();
     env.today = app::today();
+    env.hour = env.today.y ? localHour(ep) : -1;
     if (net::takeVisitor() && app::ui.screen() == Screen::Main) app::ui.visitor(now);
     app::ui.update(env);
 
     if (app::ui.takeDirty()) saveWanted = true;
     if (int sc = app::ui.takeRainRecord()) cloud::event(String("{\"type\":\"rain\",\"score\":") + sc + "}");
     if (int m = app::ui.takeFocusDone()) cloud::event(String("{\"type\":\"focus\",\"minutes\":") + m + "}");
+    if (int f = app::ui.takeNewFriend(); f >= 0) cloud::event(String("{\"type\":\"friend\",\"id\":") + f + "}");
 
     // A learned tune gets whistled now and then while the bird is awake and content.
     const PetState& s = app::pet.state();

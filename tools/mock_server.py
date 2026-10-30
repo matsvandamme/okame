@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Serve the built phone page with a fake API, for screenshots without the dongle.
 
-usage: mock_server.py [port] [--setup] [--named]
+usage: mock_server.py [port] [--setup] [--named] [--full] [--owl|--budgie] [--gone]
 """
 import json
 import pathlib
@@ -35,9 +35,15 @@ if FULL:
         "bestDance": 6, "jankenWins": 3,
         "wx": {"kind": "rain", "temp": 12, "place": "Home"},
         "focusLeft": -1, "focusCount": 7, "rivalRain": 14, "occasion": "sinterklaas",
+        "species": "cockatiel", "friends": {"met": 0b10011, "visits": [4, 7, 0, 0, 1]},
         "words": 3, "wordList": [{"t": "OYASUMI", "learning": False}, {"t": "I LOVE YOU", "learning": False},
                                  {"t": "GOEDEMORGEN", "learning": True}],
     })
+for flag in ("owl", "budgie"):
+    if f"--{flag}" in sys.argv:
+        STATE["species"] = flag
+if "--gone" in sys.argv:
+    STATE["stage"] = "gone"
 NETS = ["Home Wi-Fi", "Phone hotspot"]
 TOKEN = "f" * 32
 
@@ -104,7 +110,10 @@ class H(BaseHTTPRequestHandler):
             if q.get("code") == "4721":
                 return self.send(200, {"token": TOKEN})
             return self.send(403, {"error": "wrong code", "triesLeft": 4})
-        if self.path in ("/api/tune", "/api/networks/add", "/api/networks/remove", "/api/new-egg", "/api/ota/check"):
+        if self.path == "/api/new-egg":
+            STATE.update({"stage": "egg", "species": q.get("species", STATE.get("species", "cockatiel"))})
+            return self.send(200, {"ok": True})
+        if self.path in ("/api/tune", "/api/networks/add", "/api/networks/remove", "/api/ota/check"):
             return self.send(200, {"ok": True})
         if self.path == "/api/game-start":
             g = q.get("g")

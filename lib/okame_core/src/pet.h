@@ -5,6 +5,10 @@
 
 enum class Stage : uint8_t { Egg, Chick, Juvenile, Adult, Gone };
 enum class Variant : uint8_t { Grey, Pearl, Pied, Scruffy };
+// Which bird hatches from the egg. Chosen only when a new egg starts, so a bird never changes species.
+enum class Species : uint8_t { Cockatiel, Budgie, Owl, Count };
+// Friends who drop in on Okame now and then. The pigeon brings Matthieu's notes and hugs.
+enum Friend : uint8_t { FRIEND_BUDGIE, FRIEND_PIGEON, FRIEND_ENAGA, FRIEND_MEJIRO, FRIEND_OWL, FRIEND_COUNT };
 enum class Action : uint8_t { Seed, Millet, Bath, Vet, Light, Scritch, GameWin, GameLose };
 enum class Result : uint8_t { Ok, Refused, NotNeeded, Sleeping };
 enum class Mood : uint8_t { Content, Meh, Sad, Sick, Asleep };
@@ -87,6 +91,18 @@ struct PetExtra {
   int16_t lastCardDays;            // days shown on the last countdown card, so only a number she saw gets crossed off
 };
 
+// Everything added in 0.5: the species and the friends who visited. Its own key again, so 0.4 still finds
+// "pet" and "pet2" exactly as it left them after a rollback. Zeroed when missing (a cockatiel with no friends yet).
+struct PetBirds {
+  uint16_t version;
+  uint8_t species;                // Species
+  uint8_t met;                    // bit per Friend
+  uint16_t visits[FRIEND_COUNT];
+  int32_t visitDay;               // civil day that visitsToday counts
+  uint8_t visitsToday;
+  uint32_t eggStart;              // the egg this species belongs to; another egg (say, after a rollback) is a cockatiel
+};
+
 class Pet {
  public:
   static constexpr uint16_t VERSION = 1;
@@ -133,6 +149,15 @@ class Pet {
   void recordJanken(bool won);
   void recordFocus();
 
+  // 0.5 additions (see PetBirds). A new egg keeps the friends; the species is set by whoever starts the egg.
+  static constexpr uint16_t BIRDS_VERSION = 1;
+  const PetBirds& birds() const { return b_; }
+  PetBirds& birdsMut() { return b_; }
+  void loadBirds(const PetBirds& b);
+  Species species() const { return b_.species < uint8_t(Species::Count) ? Species(b_.species) : Species::Cockatiel; }
+  void setSpecies(Species sp) { b_.species = uint8_t(sp) < uint8_t(Species::Count) ? uint8_t(sp) : 0; }
+  bool recordVisit(Friend f);  // true the first time this friend comes
+
  private:
   void step(uint32_t now, uint32_t dt);
   void grow(uint32_t now);
@@ -142,5 +167,6 @@ class Pet {
 
   PetState s_;
   PetExtra x_{};
+  PetBirds b_{BIRDS_VERSION, 0, 0, {}, 0, 0, 0};
   HourFn hour_;
 };

@@ -402,6 +402,140 @@ int main(int argc, char** argv) {
     s.run(800);
     s.shot("a80_rain_vs");
   }
+  {  // 0.5: the budgie and the owl through every stage and mood
+    const char* sp[] = {"", "budgie", "owl"};
+    for (int k = 1; k < 3; k++) {
+      Sim s;
+      s.pet.setSpecies(Species(k));
+      s.pet.reset(s.env.epoch);
+      char n[64];
+      auto shot = [&](const char* what) {
+        snprintf(n, sizeof n, "b%d_%s_%s", k, sp[k], what);
+        s.shot(n);
+      };
+      s.run(500);
+      shot("00_egg");
+      s.stage(Stage::Chick);
+      s.run(1950);
+      shot("01_hatch_crack");
+      s.run(800);
+      shot("02_hatch_happy");
+      s.run(1500);
+      shot("10_chick");
+      s.ui.remoteAction(Action::Seed, Result::Ok, s.t);
+      s.run(400);
+      shot("11_chick_peck");
+      s.stage(Stage::Juvenile);
+      s.run(1500);
+      shot("20_juv");
+      s.ui.forceAnim(Anim::Greet, s.t);
+      s.run(300);
+      shot("21_juv_up");
+      s.ui.forceAnim(Anim::GameWin, s.t);
+      s.run(300);
+      shot("22_juv_happy");
+      s.ui.remoteAction(Action::Seed, Result::Ok, s.t);
+      s.run(400);
+      shot("23_juv_peck");
+      s.tweak([](PetState& st) { st.hunger = 0; });
+      s.run(2600);
+      shot("24_juv_sad");
+      for (int v = 0; v < 4; v++) {
+        s.stage(Stage::Adult, Variant(v));
+        s.run(1500);
+        const char* vn[] = {"30_adult_grey", "31_adult_pearl", "32_adult_pied", "33_adult_scruffy"};
+        shot(vn[v]);
+      }
+      s.ui.forceAnim(Anim::Greet, s.t);
+      s.run(300);
+      shot("34_adult_up");
+      s.ui.forceAnim(Anim::GameWin, s.t);
+      s.run(300);
+      shot("35_adult_happy");
+      s.ui.remoteAction(Action::Seed, Result::Ok, s.t);
+      s.run(400);
+      shot("36_adult_peck");
+      s.tweak([](PetState& st) { st.hunger = 0; });
+      s.run(2600);
+      shot("37_adult_sad");
+      g_hour = 23;
+      s.tweak([](PetState& st) { st.hunger = 3; });
+      s.run(1200);
+      shot("38_adult_asleep");
+      g_hour = 14;
+      s.ui.setWeather(Weather::Rain, s.t);
+      s.run(900);
+      shot("40_rain");
+      s.ui.setWeather(Weather::Hot, s.t);
+      s.run(900);
+      shot("41_hot");
+      s.ui.setWeather(Weather::Clear, s.t);
+      s.ui.say("OYASUMI", false, s.t);
+      s.run(600);
+      shot("42_say");
+      s.ui.startFocus(25, s.t);
+      s.run(2000);
+      shot("43_focus");
+      s.ui.stopFocus(s.t);
+      s.run(300);
+      const char* hats[] = {"", "bow", "crown", "beret", "party", "sakura", "omamori", "hachimaki"};
+      Stage stages[] = {Stage::Chick, Stage::Juvenile, Stage::Adult};
+      const char* sn[] = {"chick", "juv", "adult"};
+      for (int st = 0; st < 3; st++)
+        for (int h = 1; h < HAT_COUNT; h++) {
+          s.stage(stages[st], Variant::Pearl);
+          s.tweak([](PetState& ps) { ps.hunger = ps.happy = 3; });
+          PetState ps = s.pet.state();
+          ps.hat = h;
+          s.pet.load(ps);
+          s.run(400);
+          char what[40];
+          snprintf(what, sizeof what, "9%d_hat_%s_%s", st, sn[st], hats[h]);
+          shot(what);
+        }
+    }
+  }
+  {  // 0.5: friends visiting a cockatiel, and the pigeon bringing the post
+    const char* fn[] = {"budgie", "pigeon", "enaga", "mejiro", "owl"};
+    for (int f = 0; f < FRIEND_COUNT; f++) {
+      Sim s;
+      s.stage(Stage::Adult, Variant::Pearl);
+      s.run(300);
+      s.ui.friendVisit(Friend(f), s.t);
+      char n[48];
+      uint32_t at[] = {700, 1200, 2300, 3100, 3900, 6100};
+      uint32_t done = 0;
+      for (int i = 0; i < 6; i++) {
+        s.run(at[i] - done);
+        done = at[i];
+        snprintf(n, sizeof n, "c%d_friend_%s_%d", f, fn[f], i);
+        s.shot(n);
+      }
+    }
+    Sim s;
+    s.stage(Stage::Adult, Variant::Pearl);
+    s.run(300);
+    s.ui.showMessage("Matthieu", "GOOD MORNING", s.t);
+    uint32_t at[] = {500, 1100, 1700, 2200, 2900, 4200};
+    uint32_t done = 0;
+    char n[48];
+    for (int i = 0; i < 6; i++) {
+      s.run(at[i] - done);
+      done = at[i];
+      snprintf(n, sizeof n, "c6_pigeon_note_%d", i);
+      s.shot(n);
+    }
+    s.run(20000);
+    s.ui.showHug("Matthieu", s.t);
+    done = 0;
+    uint32_t hat[] = {900, 1700, 3000, 5200};
+    for (int i = 0; i < 4; i++) {
+      s.run(hat[i] - done);
+      done = hat[i];
+      snprintf(n, sizeof n, "c7_pigeon_hug_%d", i);
+      s.shot(n);
+    }
+  }
   {  // Frame sequence of the main screen for the web mock server
     Sim s;
     s.stage(Stage::Adult, Variant::Pearl);

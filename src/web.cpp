@@ -123,6 +123,14 @@ String web::stateJson() {
   j += "{\"name\":" + jsonString(s.name);
   j += ",\"stage\":\"" + String(stageName(s.stage)) + "\"";
   j += ",\"variant\":\"" + String(variantName(s.variant)) + "\"";
+  {
+    static const char* const SPECIES[] = {"cockatiel", "budgie", "owl"};
+    const PetBirds& b = app::pet.birds();
+    j += ",\"species\":\"" + String(SPECIES[uint8_t(app::pet.species())]) + "\"";
+    j += ",\"friends\":{\"met\":" + String(b.met) + ",\"visits\":[";
+    for (int i = 0; i < FRIEND_COUNT; i++) j += String(i ? "," : "") + b.visits[i];
+    j += "]}";
+  }
   j += ",\"hunger\":" + String(s.hunger) + ",\"happy\":" + String(s.happy);
   j += ",\"poop\":" + String(s.poop) + ",\"sick\":" + String(s.sick ? "true" : "false");
   j += ",\"lightsOff\":" + String(s.lightsOff ? "true" : "false");
@@ -458,7 +466,11 @@ void begin() {
       app::Lock lock;
       // Starting over after the bird flew away needs no code; otherwise it's a setting.
       if (app::pet.state().stage != Stage::Gone && !authorized(r)) return denied(r);
+      // Which bird hatches: picked on the page; left out, the next egg is the same kind as before.
+      String sp = param(r, "species");
+      int k = sp == "cockatiel" ? 0 : sp == "budgie" ? 1 : sp == "owl" ? 2 : -1;
       app::pet.reset(app::epoch());
+      if (k >= 0) app::pet.setSpecies(Species(k));
     }
     app::requestSave();
     sendJson(r, 200, "{\"ok\":true}");

@@ -1,0 +1,106 @@
+; Okame's visiting friends (0.5). Small birds that drop in now and then; they face right, the renderer mirrors
+; them so they face Okame. In flight a wing (fr_wing_up / fr_wing_dn) flaps on the back.
+
+; ---- budgie セキセイインコ: barred head, cere, throat spots, long tail
+@ fr_budgie
+......###..
+.....#o#o#.
+....##o#o##
+....#ooooo#
+...#w#o#o#.
+..#ww#oo#..
+##ww#oo#...
+#..#####...
+....#.#....
+
+; ---- Belgian racing pigeon ハト: small head, plump breast, carries the post
+@ fr_pigeon
+........###..
+.......#o#o#.
+.......#ooo##
+......#ooo#..
+...####oooo#.
+.##wwww#oooo#
+#wwwwww#oooo#
+.###########.
+......#..#...
+
+; ---- shima-enaga シマエナガ: a white fluff ball with a tiny beak and a long thin tail
+@ fr_enaga
+.....####...
+....#oooo#..
+...#ooo#o##.
+...#oooooo#.
+####oooooo#.
+...#oooooo#.
+....######..
+.....#..#...
+
+@ fr_enaga_puff
+....######..
+...#oooooo#.
+..#oooo#oo##
+..#oooooooo#
+###oooooooo#
+..#oooooooo#
+...########.
+.....#..#...
+
+; ---- mejiro メジロ: olive green (patterned) with a bold white eye-ring
+@ fr_mejiro
+.....####...
+....#wooow#.
+...#wwo#ow##
+...#wwooow#.
+..#wwwwwww#.
+###wwwwoo#..
+...#######..
+....#..#....
+
+; ---- a little owl フクロウ, seen from the front
+@ fr_owl
+##.......##
+.##.###.##.
+.#ooooooo#.
+#o###o###o#
+#o#o#o#o#o#
+#o###o###o#
+#oooo#oooo#
+#w#o#o#o#w#
+.#w#ooo#w#.
+..#######..
+..#.#.#.#..
+
+@ fr_owl_blink
+##.......##
+.##.###.##.
+.#ooooooo#.
+#ooooooooo#
+#o###o###o#
+#ooooooooo#
+#oooo#oooo#
+#w#o#o#o#w#
+.#w#ooo#w#.
+..#######..
+..#.#.#.#..
+
+; ---- flapping wing, drawn on the back while flying
+@ fr_wing_up
+#....
+##...
+###..
+.####
+
+@ fr_wing_dn
+.####
+###..
+#....
+
+; ---- a plum branch in blossom for the mejiro to sit on (top right of the screen)
+@ fr_branch
+............#.#.
+.....#.#.....#..
+......#.....#.#.
+......#......#..
+...############.
+.###............

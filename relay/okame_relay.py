@@ -231,6 +231,21 @@ hint at needs (hungry, dirty cage, sleepy) the way a bird would. You can't do ac
 feed or play, tell them the command (/feed, /treat, /bath, /vet, /scritch, /cover, /draw, /song, /note, /hug, /home, /teach, /catch)."""
 
 
+def species():
+    """What hatched on the egg: a cockatiel unless a new egg was started as a budgie or an owl (0.5)."""
+    sp = device["state"].get("species")
+    return sp if sp in ("budgie", "owl") else "cockatiel"
+
+
+def persona():
+    """PERSONA for the bird that is actually on the screen; an owl hoots instead of chirping."""
+    sp = species()
+    text = PERSONA.replace("cockatiel", sp)
+    if sp == "owl":
+        text = text.replace("(ピヨ, chirp,", "(ホーホー, hoo,")
+    return text
+
+
 async def ask(system, prompt, schema=None, effort="low", max_tokens=1500):
     if not ai:
         return None
@@ -267,7 +282,7 @@ async def ai_chat(name, text):
     st = state_line(device["state"])
     hist = kv_get("chat_hist", [])[-6:]
     convo = "\n".join(f"{h['who']}: {h['text']}" for h in hist)
-    reply = await ask(PERSONA, f"Your state right now: {st}.\nRecent chat:\n{convo}\n\n{name} says: {text}")
+    reply = await ask(persona(), f"Your state right now: {st}.\nRecent chat:\n{convo}\n\n{name} says: {text}")
     if reply:
         hist += [{"who": name, "text": text}, {"who": "Okame", "text": reply}]
         kv_set("chat_hist", hist[-12:])
@@ -302,7 +317,7 @@ SONG_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["ti
 
 
 async def ai_song(idea):
-    out = await ask(PERSONA, f"Compose a short cockatiel whistle for: {idea}. Notes are 0 (do), 1 (re), 2 (mi), "
+    out = await ask(persona(), f"Compose a short {species()} whistle for: {idea}. Notes are 0 (do), 1 (re), 2 (mi), "
                     f"3 (so), 4 (la); 4 to 8 notes, catchy and whistle-able. Give it a cute title in the language "
                     f"of the request.", schema=SONG_SCHEMA, effort="low", max_tokens=600)
     if not out:
@@ -315,13 +330,13 @@ async def ai_diary():
     since = time.time() - 86400
     evs = db.execute("select * from events where at > ? order by at", (since,)).fetchall()
     lines = [f"{datetime.fromtimestamp(e['at'], TZ):%H:%M} {e['who']}: {e['what']}" for e in evs] or ["(a quiet day)"]
-    return await ask(PERSONA, "Write today's diary entry: exactly three short, funny lines from your point of view, "
+    return await ask(persona(), "Write today's diary entry: exactly three short, funny lines from your point of view, "
                      "then the same three lines in Japanese. Today's events:\n" + "\n".join(lines[-60:]) +
                      f"\nYour state now: {state_line(device['state'])}", effort="low", max_tokens=800)
 
 
 async def ai_haiku():
-    return await ask(PERSONA, "Write one haiku about your life as a pocket cockatiel (today's mood: "
+    return await ask(persona(), f"Write one haiku about your life as a pocket {species()} (today's mood: "
                      f"{device['state'].get('mood', 'content')}). First in Japanese (5-7-5), then an English "
                      "version. No title.", effort="low", max_tokens=400)
 
@@ -388,7 +403,7 @@ CARE = {"feed": ("seed", "Crunch crunch 🌻"), "treat": ("millet", "Millet!! My
         "scritch": ("scritch", "Head scritches… *melts* 🥰"), "cover": ("light", "Lights… 🌙")}
 RESULT_TEXT = {"refused": "…but it isn't hungry right now 🙅", "not-needed": "…not needed, all good! ✨",
                "sleeping": "…shh, the cage is covered. Uncover it first 🌙"}
-HELP = ("<b>オカメ Okame</b>, your pocket cockatiel 🐦💛\n\n"
+HELP = ("<b>オカメ Okame</b>, your pocket bird 🐦💛\n\n"
         "<b>Look after me</b>\n/status how I'm doing · /photo my screen\n/feed /treat /bath /vet /scritch /cover\n\n"
         "<b>Make my screen sparkle</b>\n/note &lt;text&gt; a love note on my screen 💌\n/hug a big hug on my screen 🤗\n/home &lt;date&gt; count down the days until you're home 🚢\n"
         "/teach &lt;word&gt; teach me to say something 🦜 · /words\n"
@@ -545,8 +560,8 @@ async def telegram_loop():
         {"command": "sakura", "description": "Falling sakura 🌸"}, {"command": "song", "description": "Okame composes a whistle 🎶"},
         {"command": "diary", "description": "Okame's diary 📔"}, {"command": "haiku", "description": "A haiku 🍃"},
         {"command": "help", "description": "Everything Okame can do"}])
-    await tg("setMyShortDescription", short_description="Okame オカメ, a pocket cockatiel living on a little pixel screen 🐦💛")
-    await tg("setMyDescription", description="ピヨ! I'm Okame, a tiny cockatiel who lives on a little screen next to "
+    await tg("setMyShortDescription", short_description="Okame オカメ, a pocket bird living on a little pixel screen 🐦💛")
+    await tg("setMyDescription", description="ピヨ! I'm Okame, a tiny bird who lives on a little screen next to "
              "Haruki's laptop. Feed me, play with me and send notes that pop up on my screen. Press Start to become "
              "my friend (you'll need the code on my screen).")
     while True:
@@ -646,6 +661,7 @@ def egg_has(version):
 
 
 V04 = (0, 4, 0)  # hug, words, countdown, weather, dates, rival: older eggs answer "unknown" to these
+V05 = (0, 5, 0)  # visiting friends, the pigeon post, budgie and owl eggs
 UPDATE_FIRST = "My little screen needs an update before I can do that 🛠️ ピヨ"
 
 
@@ -1006,7 +1022,27 @@ async def send_rival():
         enqueue("rival", {"score": best})
 
 
-EVENT_HANDLERS = {"love": love_tapped, "omikuji": omikuji_drawn, "focus": focus_done, "rain": rain_record}
+FRIEND_NEWS = [
+    "🦜 A budgie dropped by to visit me today! We bobbed our heads at each other. New friend ✨",
+    "🕊️ Meet my new friend: a Belgian racing pigeon! From now on it flies Matthieu's notes and hugs to my screen 💌",
+    "❄️ A shima-enaga came to visit: a tiny snow fairy from Hokkaido! We snuggled ☃️",
+    "🌸 A mejiro sang for me from a plum branch today! New friend ✨",
+    "🦉 A lucky owl came to sit with me! フクロウ, 不苦労: no hardship ✨",
+]
+
+
+async def friend_met(e):
+    """A friend visited the egg for the first time (each one only once): both of them hear about it."""
+    i = int(e.get("id", -1))
+    if not 0 <= i < len(FRIEND_NEWS):
+        return
+    event("Okame", f"met a new friend ({FRIEND_NEWS[i].split()[0]})")
+    for u in users():
+        await show(u["chat_id"], FRIEND_NEWS[i])
+
+
+EVENT_HANDLERS = {"love": love_tapped, "omikuji": omikuji_drawn, "focus": focus_done, "rain": rain_record,
+                  "friend": friend_met}
 async def weather_now():
     await send_weather(force=True)
 
@@ -1025,13 +1061,23 @@ WHATS_NEW_HARUKI = (
     "and I now know the weather outside, the seasons… and a certain birthday 🎂")
 
 
+WHATS_NEW_05 = (
+    "✨ <b>I just updated myself again!</b> ピヨ Little friends come to visit me now: a budgie in the daytime, "
+    "a shima-enaga in winter, a mejiro in plum season and a lucky owl in the evening. "
+    "And from now on a Belgian racing pigeon flies Matthieu's notes and hugs to my screen 🕊️💌\n\n"
+    "See who has visited under <b>Okame's friends</b> on my page.")
+
+
 async def whats_new():
-    if kv_get("whats_new_0.4"):
-        return
-    kv_set("whats_new_0.4", time.time())
     ids = {p["chat_id"] for p in partners()}
-    for u in users():
-        await say(u["chat_id"], WHATS_NEW_MATTHIEU if u["chat_id"] in ids else WHATS_NEW_HARUKI)
+    if not kv_get("whats_new_0.4"):
+        kv_set("whats_new_0.4", time.time())
+        for u in users():
+            await say(u["chat_id"], WHATS_NEW_MATTHIEU if u["chat_id"] in ids else WHATS_NEW_HARUKI)
+    if egg_has(V05) and not kv_get("whats_new_0.5"):
+        kv_set("whats_new_0.5", time.time())
+        for u in users():
+            await say(u["chat_id"], WHATS_NEW_05)
 
 
 CONNECT_HOOKS = [send_home, resend_words, send_dates, weather_now, send_rival, whats_new]

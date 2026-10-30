@@ -180,5 +180,23 @@ async def t_whats_new():
           and len(said(HARUKI)) == 1 and "Janken" in said(HARUKI)[0])
 TESTS.append(t_whats_new)
 
+async def t_friends():
+    sent.clear()
+    r.device["state"] = {"fw": "0.5.0", "species": "owl"}
+    check("persona follows the species", "a tiny owl" in r.persona() and "cockatiel" not in r.persona()
+          and "ホーホー" in r.persona())
+    r.device["state"] = {"fw": "0.5.0"}
+    check("persona defaults to the cockatiel", "a tiny cockatiel" in r.persona())
+    await r.on_event({"type": "friend", "id": 1})
+    check("a first meeting reaches both", any("pigeon" in t for t in said(MATTHIEU)) and any("pigeon" in t for t in said(HARUKI)))
+    sent.clear()
+    await r.on_event({"type": "friend", "id": 9})
+    check("an unknown friend is ignored", not sent)
+    await r.whats_new()
+    await r.whats_new()
+    check("what's new 0.5: once each", sum("again" in t for t in said(MATTHIEU)) == 1
+          and sum("again" in t for t in said(HARUKI)) == 1)
+TESTS.append(t_friends)
+
 if __name__ == "__main__":
     asyncio.run(main())

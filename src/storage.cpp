@@ -30,6 +30,17 @@ void loadExtra(Pet& pet) {
 
 void saveExtra(const PetExtra& x) { prefs.putBytes("pet2", &x, sizeof x); }
 
+void loadBirds(Pet& pet) {
+  size_t len = prefs.getBytesLength("pet3");
+  if (len < 2 || len > sizeof(PetBirds)) return;  // a shorter save from an older layout loads with the rest zeroed
+  PetBirds b;
+  memset(&b, 0, sizeof b);
+  prefs.getBytes("pet3", &b, len);
+  pet.loadBirds(b);
+}
+
+void saveBirds(const PetBirds& b) { prefs.putBytes("pet3", &b, sizeof b); }
+
 int loadNetworks(SavedNetwork* out, int max) {
   size_t len = prefs.getBytesLength("nets");
   int n = len / sizeof(SavedNetwork);

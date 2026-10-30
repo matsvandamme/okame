@@ -18,6 +18,7 @@ struct Env {
   uint16_t pairCode = 0;
   int otaProgress = -1;    // 0..100 while updating
   Date today{};            // local calendar date; y == 0 until the clock is known
+  int8_t hour = -1;        // local hour, -1 until the clock is known
 };
 
 enum class Screen : uint8_t {
@@ -26,7 +27,7 @@ enum class Screen : uint8_t {
 
 enum class Anim : uint8_t {
   Hatch, Seed, Millet, Bath, Vet, Refused, NotNeeded, Scritch, Greet, Visitor, Whistle,
-  GameWin, GameLose, Sleeping, Gift, Love, Hug, Countdown, HomeDay, Omikuji, Occasion, FocusDone
+  GameWin, GameLose, Sleeping, Gift, Love, Hug, Countdown, HomeDay, Omikuji, Occasion, FocusDone, Friend
 };
 
 // Weather where Haruki is, from the relay.
@@ -95,7 +96,18 @@ class Ui {
            screen_ == Screen::Dance;
   }
   // Today's omikuji: the bird shakes the shrine box, a stick drops, and the fortune appears in big kanji.
-  void showOmikuji(int grade, uint32_t nowMs) { omikuji_ = grade; startAnim(Anim::Omikuji, nowMs); }
+  // A 大吉 brings the lucky owl round straight afterwards.
+  void showOmikuji(int grade, uint32_t nowMs) {
+    omikuji_ = grade;
+    if (grade == 0) owlAt_ = nowMs | 1;
+    startAnim(Anim::Omikuji, nowMs);
+  }
+
+  // A friend drops in: it flies in, spends a few seconds with the bird, and flies off. Visits come by themselves
+  // (see maybeFriend); this is for the sim and tests. The pigeon comes with every note and hug instead.
+  void friendVisit(Friend f, uint32_t nowMs);
+  Friend visiting() const { return friend_; }
+  int takeNewFriend() { int f = newFriend_; newFriend_ = -1; return f; }  // a friend met for the first time, once
 
   // Set when the user held the button long enough to ask for a pairing code.
   bool takePairRequest() {
@@ -164,9 +176,23 @@ class Ui {
   uint32_t wxAt_ = 0;
   void finishGame(bool won, const Env& env);
   void drawHat(Pose pose, int x, int y, bool flip);
+  // Friends.
+  void maybeFriend(const Env& env);
+  void meet(Friend f);
+  void drawFriend(uint32_t el);
+  // A friend at (x, bottom); wing 0 perched, 1 up, 2 down. `look` swaps in another pose (owl blink, enaga puff).
+  void drawFlyer(Friend f, int x, int bottom, bool flip, int wing, const Sprite* look = nullptr);
+  void drawDelivery(uint32_t el, const Sprite& cargo, int dropX, int dropY);  // the pigeon brings the post
+  Friend friend_ = FRIEND_BUDGIE;
+  int newFriend_ = -1;
+  uint32_t nextFriend_ = 0;
+  uint32_t owlAt_ = 0;   // when something called the lucky owl (0 = nobody); it only comes within 15 minutes
+  int fromX_ = 0;        // where the bird stood when a friend arrived: it walks over to make room
   void drawPoop(uint32_t nowMs);
   void drawHearts(int n, int y);
   int birdW() const;
+  int birdH() const;
+  int headX(int bx, bool flip) const;  // left edge of a 6-dot box around the head
 
   Pet& pet_;
   Rng rng_;
