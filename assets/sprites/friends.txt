@@ -59,28 +59,26 @@
 
 ; ---- a little owl フクロウ, seen from the front
 @ fr_owl
-##.......##
-.##.###.##.
+.##.....##.
+..##.#.##..
 .#ooooooo#.
-#o###o###o#
-#o#o#o#o#o#
-#o###o###o#
+#o##ooo##o#
+#o##o#o##o#
 #oooo#oooo#
-#w#o#o#o#w#
-.#w#ooo#w#.
+#w#ooooo#w#
+.#w#o#o#w#.
 ..#######..
 ..#.#.#.#..
 
 @ fr_owl_blink
-##.......##
-.##.###.##.
+.##.....##.
+..##.#.##..
 .#ooooooo#.
 #ooooooooo#
-#o###o###o#
-#ooooooooo#
+#o##o#o##o#
 #oooo#oooo#
-#w#o#o#o#w#
-.#w#ooo#w#.
+#w#ooooo#w#
+.#w#o#o#w#.
 ..#######..
 ..#.#.#.#..
 

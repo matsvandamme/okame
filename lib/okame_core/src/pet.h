@@ -150,7 +150,7 @@ class Pet {
   void recordFocus();
 
   // 0.5 additions (see PetBirds). A new egg keeps the friends; the species is set by whoever starts the egg.
-  static constexpr uint16_t BIRDS_VERSION = 1;
+  static constexpr uint16_t BIRDS_VERSION = 2;
   const PetBirds& birds() const { return b_; }
   PetBirds& birdsMut() { return b_; }
   void loadBirds(const PetBirds& b);

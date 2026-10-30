@@ -501,6 +501,7 @@ int main(int argc, char** argv) {
       Sim s;
       s.stage(Stage::Adult, Variant::Pearl);
       s.run(300);
+      for (int k = 0; k < 40; k++) s.run(700);  // let the bird wander off to the right first
       s.ui.friendVisit(Friend(f), s.t);
       char n[48];
       uint32_t at[] = {700, 1200, 2300, 3100, 3900, 6100};
