@@ -532,10 +532,9 @@ void Ui::meet(Friend f) {
 void Ui::friendVisit(Friend f, uint32_t nowMs) {
   friend_ = f < FRIEND_COUNT ? f : FRIEND_BUDGIE;
   meet(friend_);
-  // The bird steps aside to the left to make room, and stays there afterwards.
+  // The bird walks over to the left edge to make room, and stays there afterwards.
   fromX_ = birdX_;
-  int room = LCD_W - FRIENDS[friend_].sprite->w - 2 - birdW();
-  if (birdX_ > room) birdX_ = room < 1 ? 1 : room;
+  birdX_ = 2;
   facingLeft_ = false;
   startAnim(Anim::Friend, nowMs);
 }
