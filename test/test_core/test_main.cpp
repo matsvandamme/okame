@@ -370,6 +370,120 @@ void test_janken_timeout_is_not_a_loss() {
   TEST_ASSERT_TRUE(j.timedOut());
 }
 
+// ---- 0.5: species and friends
+
+void test_species_and_friends_survive_a_new_egg() {
+  Pet p = hatched();
+  TEST_ASSERT_EQUAL(Species::Cockatiel, p.species());  // a missing "pet3" means the cockatiel she has
+  TEST_ASSERT_TRUE(p.recordVisit(FRIEND_ENAGA));
+  TEST_ASSERT_FALSE(p.recordVisit(FRIEND_ENAGA));
+  p.setSpecies(Species::Owl);
+  p.reset(T0 + DAY);
+  TEST_ASSERT_EQUAL(Species::Owl, p.species());
+  TEST_ASSERT_EQUAL(1 << FRIEND_ENAGA, p.birds().met);
+  TEST_ASSERT_EQUAL(2, p.birds().visits[FRIEND_ENAGA]);
+  p.setSpecies(Species(7));
+  TEST_ASSERT_EQUAL(Species::Cockatiel, p.species());
+  PetBirds rolled = p.birds();  // saved for another egg: a 0.4 rollback started a new one, which is a cockatiel
+  rolled.eggStart = 12345;
+  p.loadBirds(rolled);
+  TEST_ASSERT_EQUAL(Species::Cockatiel, p.species());
+  TEST_ASSERT_EQUAL(1 << FRIEND_ENAGA, p.birds().met);  // the friends stay
+  p.setSpecies(Species::Owl);
+  PetBirds same = p.birds();
+  p.loadBirds(same);
+  TEST_ASSERT_EQUAL(Species::Owl, p.species());
+  PetBirds other{};
+  other.version = 99;
+  other.species = 1;
+  p.loadBirds(other);  // another layout: ignored
+  TEST_ASSERT_EQUAL(Species::Owl, p.species());
+}
+
+static int visitsOf(const Pet& p) {
+  int n = 0;
+  for (int i = 0; i < FRIEND_COUNT; i++) n += p.birds().visits[i];
+  return n;
+}
+
+static Env dayEnv(Date d, int hour) {
+  Env e;
+  e.online = true;
+  e.epoch = T0 + HATCH_AFTER;
+  e.nowMs = 1000;
+  e.today = d;
+  e.hour = hour;
+  return e;
+}
+
+void test_friends_visit_at_most_three_times_a_day() {
+  Pet p = hatched();
+  g_hour = 14;
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 12, 10}, 14);  // December afternoon: the budgie, the shima-enaga, or the pigeon off duty
+  bool other = false;
+  for (int i = 0; i < 24 * 720; i++) {
+    e.nowMs += 5000;
+    ui.update(e);
+    if (ui.screen() == Screen::Anim && (ui.visiting() == FRIEND_MEJIRO || ui.visiting() == FRIEND_OWL)) other = true;
+  }
+  TEST_ASSERT_EQUAL(3, visitsOf(p));
+  TEST_ASSERT_FALSE(other);
+  e.today = {2026, 12, 11};  // a new day, new visits
+  for (int i = 0; i < 6 * 720; i++) { e.nowMs += 5000; ui.update(e); }
+  TEST_ASSERT_TRUE(visitsOf(p) > 3);
+}
+
+void test_no_friend_out_of_season_or_of_its_own_kind() {
+  Pet p = hatched();
+  p.setSpecies(Species::Budgie);  // a budgie's afternoon in November: only the pigeon drops by, never a budgie
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 10}, 14);
+  for (int i = 0; i < 12 * 720; i++) { e.nowMs += 5000; ui.update(e); }
+  TEST_ASSERT_EQUAL(0, p.birds().visits[FRIEND_BUDGIE]);
+  TEST_ASSERT_EQUAL(visitsOf(p), p.birds().visits[FRIEND_PIGEON]);
+  int before = visitsOf(p);
+  e.today = {2026, 11, 13};  // an owl evening (every other day)
+  e.hour = 20;
+  for (int i = 0; i < 5 * 720; i++) { e.nowMs += 5000; ui.update(e); }
+  TEST_ASSERT_EQUAL(visitsOf(p) - before, p.birds().visits[FRIEND_OWL]);
+  TEST_ASSERT_TRUE(p.birds().visits[FRIEND_OWL] > 0);
+}
+
+void test_no_friend_during_focus() {
+  Pet p = hatched();
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 12, 10}, 14);
+  ui.update(e);
+  TEST_ASSERT_TRUE(ui.startFocus(50, e.nowMs));
+  for (int i = 0; i < 49 * 12; i++) { e.nowMs += 5000; ui.update(e); }
+  TEST_ASSERT_EQUAL(Screen::Focus, ui.screen());
+  TEST_ASSERT_EQUAL(0, visitsOf(p));
+}
+
+void test_daikichi_brings_the_owl() {
+  Pet p = hatched();
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 10}, 14);
+  ui.update(e);
+  ui.showOmikuji(0, e.nowMs);
+  for (int i = 0; i < 70; i++) { e.nowMs += 100; ui.update(e); }  // the fortune plays for 6 s
+  TEST_ASSERT_EQUAL(Screen::Anim, ui.screen());
+  TEST_ASSERT_EQUAL(FRIEND_OWL, ui.visiting());
+  TEST_ASSERT_EQUAL(FRIEND_OWL, ui.takeNewFriend());
+}
+
+void test_the_pigeon_brings_the_post() {
+  Pet p = hatched();
+  Ui ui(p, 3);
+  ui.showMessage("Matthieu", "HELLO", 1000);
+  TEST_ASSERT_EQUAL(FRIEND_PIGEON, ui.takeNewFriend());  // met once
+  TEST_ASSERT_EQUAL(-1, ui.takeNewFriend());
+  ui.showHug("Matthieu", 90000);
+  TEST_ASSERT_EQUAL(-1, ui.takeNewFriend());
+  TEST_ASSERT_EQUAL(2, p.birds().visits[FRIEND_PIGEON]);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_egg_hatches_after_two_minutes);
@@ -403,5 +517,11 @@ int main() {
   RUN_TEST(test_occasions);
   RUN_TEST(test_focus_survives_a_wifi_blip);
   RUN_TEST(test_janken_timeout_is_not_a_loss);
+  RUN_TEST(test_species_and_friends_survive_a_new_egg);
+  RUN_TEST(test_friends_visit_at_most_three_times_a_day);
+  RUN_TEST(test_no_friend_out_of_season_or_of_its_own_kind);
+  RUN_TEST(test_no_friend_during_focus);
+  RUN_TEST(test_daikichi_brings_the_owl);
+  RUN_TEST(test_the_pigeon_brings_the_post);
   return UNITY_END();
 }

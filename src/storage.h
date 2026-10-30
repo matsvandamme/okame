@@ -15,6 +15,8 @@ bool loadPet(PetState& out);
 void savePet(const PetState& st);
 void loadExtra(Pet& pet);   // 0.4 additions, their own key so a rollback leaves "pet" untouched
 void saveExtra(const PetExtra& x);
+void loadBirds(Pet& pet);   // 0.5: species and friends, under "pet3"
+void saveBirds(const PetBirds& b);
 int loadNetworks(SavedNetwork* out, int max);
 void saveNetworks(const SavedNetwork* nets, int n);
 String apPassword();   // generated once, shown on the LCD

@@ -19,6 +19,7 @@ void Pet::reset(uint32_t now) {
   s_.stage = Stage::Egg;
   s_.hunger = s_.happy = 3;
   s_.eggStart = s_.lastTick = now;
+  b_.eggStart = now;  // the species carries over to this egg
 }
 
 bool Pet::load(const PetState& st) {
@@ -287,6 +288,26 @@ void Pet::loadExtra(const PetExtra& x) {
   x_ = x;
   x_.who[sizeof x_.who - 1] = 0;
   for (auto& w : x_.words) w.text[PetExtra::WORD_LEN] = 0;
+}
+
+void Pet::loadBirds(const PetBirds& b) {
+  if (b.version != BIRDS_VERSION) return;
+  b_ = b;
+  setSpecies(Species(b_.species));
+  // Saved for an egg that isn't this one: an older firmware started a new egg in between, and it hatched a cockatiel.
+  if (b_.eggStart != s_.eggStart) {
+    b_.species = 0;
+    b_.eggStart = s_.eggStart;
+  }
+  b_.met &= (1 << FRIEND_COUNT) - 1;
+}
+
+bool Pet::recordVisit(Friend f) {
+  if (f >= FRIEND_COUNT) return false;
+  if (b_.visits[f] < 0xffff) b_.visits[f]++;
+  bool first = !(b_.met & (1 << f));
+  b_.met |= 1 << f;
+  return first;
 }
 
 int Pet::wordCount() const {

@@ -21,61 +21,90 @@ const Sprite* const MENU_ICONS[] = {&spr::ico_seed, &spr::ico_millet, &spr::ico_
 const char* const MENU_LABELS[] = {"SEED", "MILLET", "BATH", "VET", "LIGHT", "PLAY", "STATS"};
 
 bool blink(uint32_t nowMs, uint32_t period = 500) { return (nowMs / period) % 2 == 0; }
+
+// Each species' sprites. Per life stage (chick, juvenile, adult), indexed by Pose:
+// Idle, Blink, Up, Flat, Peck, Sleep, Happy. Stages without a pose of their own reuse the nearest one.
+struct Look {
+  const Sprite* egg;
+  const Sprite* crack;
+  const Sprite* stage[3][7];
+  bool sideways;  // drawn in profile, head on the right; the owl faces the front
+};
+const Look LOOKS[] = {
+    {&spr::egg, &spr::egg_crack,
+     {{&spr::chick_idle, &spr::chick_blink, &spr::chick_idle, &spr::chick_sleep, &spr::chick_peck, &spr::chick_sleep,
+       &spr::chick_happy},
+      {&spr::juv_idle, &spr::juv_blink, &spr::juv_idle, &spr::juv_flat, &spr::juv_peck, &spr::juv_sleep, &spr::juv_happy},
+      {&spr::adult_idle, &spr::adult_blink, &spr::adult_up, &spr::adult_flat, &spr::adult_peck, &spr::adult_sleep,
+       &spr::adult_happy}},
+     true},
+    {&spr::budgie_egg, &spr::budgie_egg_crack,
+     {{&spr::budgie_chick_idle, &spr::budgie_chick_blink, &spr::budgie_chick_idle, &spr::budgie_chick_sleep,
+       &spr::budgie_chick_peck, &spr::budgie_chick_sleep, &spr::budgie_chick_happy},
+      {&spr::budgie_juv_idle, &spr::budgie_juv_blink, &spr::budgie_juv_idle, &spr::budgie_juv_blink,
+       &spr::budgie_juv_peck, &spr::budgie_juv_blink, &spr::budgie_juv_happy},
+      {&spr::budgie_adult_idle, &spr::budgie_adult_blink, &spr::budgie_adult_up, &spr::budgie_adult_flat,
+       &spr::budgie_adult_peck, &spr::budgie_adult_flat, &spr::budgie_adult_happy}},
+     true},
+    {&spr::owl_egg, &spr::owl_egg_crack,
+     {{&spr::owl_chick_idle, &spr::owl_chick_blink, &spr::owl_chick_idle, &spr::owl_chick_blink, &spr::owl_chick_peck,
+       &spr::owl_chick_blink, &spr::owl_chick_happy},
+      {&spr::owl_juv_idle, &spr::owl_juv_blink, &spr::owl_juv_up, &spr::owl_juv_flat, &spr::owl_juv_peck,
+       &spr::owl_juv_blink, &spr::owl_juv_happy},
+      {&spr::owl_adult_idle, &spr::owl_adult_blink, &spr::owl_adult_up, &spr::owl_adult_flat, &spr::owl_adult_peck,
+       &spr::owl_adult_sleep, &spr::owl_adult_happy}},
+     false},
+};
+const Look& lookOf(Species sp) { return LOOKS[uint8_t(sp) < uint8_t(Species::Count) ? uint8_t(sp) : 0]; }
+int stageIndex(Stage st) { return st == Stage::Chick ? 0 : st == Stage::Juvenile ? 1 : 2; }
+
+// Friends: how a visit looks. Sprites face right; `back` is where the flapping wing sits.
+constexpr uint32_t FRIEND_MS = 7000, FRIEND_IN_MS = 1500, FRIEND_OUT_MS = 5600;
+constexpr uint32_t FRIEND_MIN_MS = 2 * 3600 * 1000u, FRIEND_MAX_MS = 4 * 3600 * 1000u;  // between visits
+constexpr int FRIEND_PER_DAY = 3;
+constexpr uint32_t PIGEON_MS = 2400;  // the pigeon's part before a note or a hug
+constexpr uint32_t MSG_INTRO_MS = PIGEON_MS + 1000;  // pigeon, then the envelope bounces, then the text
+struct FriendLook {
+  const Sprite* sprite;
+  int8_t backX, backY;
+};
+const FriendLook FRIENDS[FRIEND_COUNT] = {
+    {&spr::fr_budgie, 2, 4}, {&spr::fr_pigeon, 3, 4}, {&spr::fr_enaga, 5, 1}, {&spr::fr_mejiro, 4, 2}, {&spr::fr_owl, 0, 5},
+};
 }  // namespace
 
 int Ui::birdW() const {
-  switch (pet_.state().stage) {
-    case Stage::Egg: return spr::egg.w;
-    case Stage::Chick: return spr::chick_idle.w;
-    case Stage::Juvenile: return spr::juv_idle.w;
-    default: return spr::adult_idle.w;
-  }
+  const Look& l = lookOf(pet_.species());
+  Stage st = pet_.state().stage;
+  return st == Stage::Egg ? l.egg->w : l.stage[stageIndex(st)][0]->w;
+}
+
+int Ui::birdH() const {
+  const Look& l = lookOf(pet_.species());
+  Stage st = pet_.state().stage;
+  return st == Stage::Egg ? l.egg->h : l.stage[stageIndex(st)][0]->h;
+}
+
+int Ui::headX(int bx, bool flip) const {
+  if (!lookOf(pet_.species()).sideways) return bx + birdW() / 2 - 3;
+  return flip ? bx + 1 : bx + birdW() - 6;
 }
 
 void Ui::drawBird(Pose pose, int x, int y, bool flip) {
   const PetState& s = pet_.state();
-  const Sprite* sp = &spr::adult_idle;
+  const Look& l = lookOf(pet_.species());
+  const Sprite* sp = l.egg;
   Pattern pat = Pattern::Solid;
-  switch (s.stage) {
-    case Stage::Egg:
-      sp = &spr::egg;
-      break;
-    case Stage::Chick:
-      switch (pose) {
-        case Pose::Blink: sp = &spr::chick_blink; break;
-        case Pose::Peck: sp = &spr::chick_peck; break;
-        case Pose::Flat: sp = &spr::chick_sleep; break;
-        case Pose::Sleep: sp = &spr::chick_sleep; break;
-        case Pose::Happy: sp = &spr::chick_happy; break;
-        default: sp = &spr::chick_idle; break;
-      }
-      break;
-    case Stage::Juvenile:
-      switch (pose) {
-        case Pose::Blink: sp = &spr::juv_blink; break;
-        case Pose::Peck: sp = &spr::juv_peck; break;
-        case Pose::Flat: sp = &spr::juv_flat; break;
-        case Pose::Sleep: sp = &spr::juv_sleep; break;
-        case Pose::Happy: sp = &spr::juv_happy; break;
-        default: sp = &spr::juv_idle; break;
-      }
-      break;
-    default:
-      switch (pose) {
-        case Pose::Blink: sp = &spr::adult_blink; break;
-        case Pose::Up: sp = &spr::adult_up; break;
-        case Pose::Flat: sp = &spr::adult_flat; break;
-        case Pose::Peck: sp = &spr::adult_peck; break;
-        case Pose::Sleep: sp = &spr::adult_sleep; break;
-        case Pose::Happy: sp = &spr::adult_happy; break;
-        default: sp = &spr::adult_idle; break;
-      }
+  if (s.stage != Stage::Egg) {
+    sp = l.stage[stageIndex(s.stage)][uint8_t(pose)];
+    if (s.stage != Stage::Chick && s.stage != Stage::Juvenile) {
       switch (s.variant) {
         case Variant::Pearl: pat = Pattern::Pearl; break;
         case Variant::Pied: pat = Pattern::Pied; break;
         case Variant::Scruffy: pat = Pattern::Scruffy; break;
         default: pat = Pattern::Solid; break;
       }
+    }
   }
   // Bottom-align so feet stay on the floor whatever the sprite height.
   frame_.sprite(*sp, x, y - sp->h, flip, pat);
@@ -92,17 +121,29 @@ void Ui::drawHat(Pose pose, int x, int y, bool flip) {
   const Sprite& a = *items[s.hat];
   // Top-left of each accessory in the facing-right sprite (index = Accessory); the chick wears the bow as a hair bow.
   // Omamori hangs on the chest; the hachimaki ties round the forehead, its ends trailing behind.
-  static const int8_t OFF[3][HAT_COUNT][2] = {
-      /*chick*/ {{0, 0}, {0, 0}, {3, 3}, {2, 5}, {7, 6}, {0, 0}, {5, 6}, {2, 3}},
-      /*juv  */ {{0, 0}, {11, 9}, {7, 4}, {6, 7}, {12, 8}, {3, 4}, {9, 8}, {6, 4}},
-      /*adult*/ {{0, 0}, {13, 11}, {10, 5}, {9, 8}, {15, 10}, {6, 4}, {11, 10}, {9, 5}},
+  // The budgie has the cockatiel's build without the crest; the owl faces the front, so things sit in the middle.
+  static const int8_t OFF[uint8_t(Species::Count)][3][HAT_COUNT][2] = {
+      {/*chick*/ {{0, 0}, {0, 0}, {3, 3}, {2, 5}, {7, 6}, {0, 0}, {5, 6}, {2, 3}},
+       /*juv  */ {{0, 0}, {11, 9}, {7, 4}, {6, 7}, {12, 8}, {3, 4}, {9, 8}, {6, 4}},
+       /*adult*/ {{0, 0}, {13, 11}, {10, 5}, {9, 8}, {15, 10}, {6, 4}, {11, 10}, {9, 5}}},
+      {/*chick*/ {{0, 0}, {3, 0}, {3, 3}, {2, 5}, {7, 6}, {1, 0}, {5, 6}, {2, 2}},
+       /*juv  */ {{0, 0}, {11, 9}, {7, 4}, {6, 7}, {12, 8}, {3, 3}, {9, 8}, {6, 4}},
+       /*adult*/ {{0, 0}, {12, 10}, {10, 4}, {9, 8}, {14, 9}, {5, 3}, {11, 10}, {9, 4}}},
+      {/*chick*/ {{0, 0}, {3, 0}, {4, 4}, {2, 7}, {4, 7}, {6, 0}, {4, 7}, {2, 2}},
+       /*juv  */ {{0, 0}, {4, 8}, {6, 5}, {3, 8}, {5, 8}, {4, 0}, {5, 8}, {3, 3}},
+       /*adult*/ {{0, 0}, {5, 10}, {8, 7}, {4, 10}, {6, 10}, {5, 0}, {6, 10}, {3, 4}}},
   };
-  int st = s.stage == Stage::Chick ? 0 : s.stage == Stage::Juvenile ? 1 : 2;
-  const Sprite* body = st == 0 ? &spr::chick_idle : st == 1 ? &spr::juv_idle : &spr::adult_idle;
+  int sp = uint8_t(pet_.species()), st = stageIndex(s.stage);
+  const Sprite* body = lookOf(pet_.species()).stage[st][0];
   // The flower clashes with a flattened crest.
-  if (s.hat == HAT_SAKURA && st == 2 && (pose == Pose::Flat || pose == Pose::Sleep)) return;
-  int ax = OFF[st][s.hat][0], ay = OFF[st][s.hat][1];
+  if (s.hat == HAT_SAKURA && sp == 0 && st == 2 && (pose == Pose::Flat || pose == Pose::Sleep)) return;
+  int ax = OFF[sp][st][s.hat][0], ay = OFF[sp][st][s.hat][1];
+  bool front = !lookOf(pet_.species()).sideways;
+  // Seen from the front, the owl wears its sunglasses over both eyes.
+  if (s.hat == HAT_CROWN && front) frame_.sprite(a, x + body->w - ax - a.w, y - body->h + ay, !flip);
   if (flip) ax = body->w - ax - a.w;
+  // A charm on the owl's barred chest gets a clear rim, or it vanishes into the feathers.
+  if (front && (s.hat == HAT_PARTY || s.hat == HAT_OMAMORI)) frame_.fillRect(x + ax - 1, y - body->h + ay, a.w + 2, a.h + 1, false);
   frame_.sprite(a, x + ax, y - body->h + ay, flip);
 }
 
@@ -147,6 +188,7 @@ void Ui::update(const Env& env) {
     nextMove_ = now + 800;
     nextCard_ = now + 60000;
     nextSay_ = now + 5 * 60 * 1000;
+    nextFriend_ = now + rng_.range(20, 40) * 60 * 1000;
   }
 
   handleButton(env);
@@ -195,7 +237,7 @@ void Ui::update(const Env& env) {
         break;
       }
       if (now - t0_ > (anim_ == Anim::Hatch ? 3600u : anim_ == Anim::Gift ? 3400u : anim_ == Anim::Omikuji || anim_ == Anim::Occasion || anim_ == Anim::FocusDone ? 6000u :
-                       anim_ == Anim::Hug || anim_ == Anim::HomeDay ? 5200u : anim_ == Anim::Countdown ? (crossOff_ ? 5600u : 4500u) : ANIM_MS))
+                       anim_ == Anim::Friend ? FRIEND_MS : anim_ == Anim::Hug ? PIGEON_MS + 5200u : anim_ == Anim::HomeDay ? 5200u : anim_ == Anim::Countdown ? (crossOff_ ? 5600u : 4500u) : ANIM_MS))
         screen_ = forced;
       break;
     case Screen::Duet:
@@ -251,6 +293,7 @@ void Ui::update(const Env& env) {
       if ((int32_t)(now - focusEnd_) >= 0) {  // done: a little celebration and a scritch break
         pet_.recordFocus();
         focusDoneMin_ = (int)((focusEnd_ - focusStart_) / 60000);
+        if (env.hour >= 19) owlAt_ = now | 1;  // an evening of work: the owl comes to sit with the bird after
         dirty_ = true;
         startAnim(Anim::FocusDone, now);
       }
@@ -260,10 +303,10 @@ void Ui::update(const Env& env) {
       screen_ = forced;
       break;
     case Screen::Message: {
-      // Envelope 1.5 s, then the text scrolls past twice.
+      // The pigeon drops the envelope, it bounces a moment, then the text scrolls past twice.
       int w = Frame::textWidth(msgText_, 2);
       uint32_t scrollMs = (uint32_t)(LCD_W + w) * 55;
-      if (now - t0_ > 1500 + 2 * scrollMs) {
+      if (now - t0_ > MSG_INTRO_MS + 2 * scrollMs) {
         msgDone_ = true;
         screen_ = forced;
       }
@@ -281,6 +324,7 @@ void Ui::update(const Env& env) {
 
   daily(env);
   maybeSay(env, false);
+  maybeFriend(env);
 
   // Wander on the main screen.
   if (now >= nextMove_) {
@@ -469,6 +513,7 @@ void Ui::showMessage(const char* from, const char* text, uint32_t nowMs) {
   snprintf(msgText_, sizeof msgText_, "%s", text);
   screen_ = Screen::Message;
   t0_ = nowMs;
+  meet(FRIEND_PIGEON);
 }
 
 void Ui::showHug(const char* from, uint32_t nowMs) {
@@ -476,6 +521,63 @@ void Ui::showHug(const char* from, uint32_t nowMs) {
   for (char* c = hugFrom_; *c; c++)
     if (*c >= 'a' && *c <= 'z') *c -= 32;
   startAnim(Anim::Hug, nowMs);
+  meet(FRIEND_PIGEON);
+}
+
+void Ui::meet(Friend f) {
+  if (pet_.recordVisit(f)) newFriend_ = f;
+  dirty_ = true;
+}
+
+void Ui::friendVisit(Friend f, uint32_t nowMs) {
+  friend_ = f < FRIEND_COUNT ? f : FRIEND_BUDGIE;
+  meet(friend_);
+  // The bird steps aside to the left to make room, and stays there afterwards.
+  fromX_ = birdX_;
+  int room = LCD_W - FRIENDS[friend_].sprite->w - 2 - birdW();
+  if (birdX_ > room) birdX_ = room < 1 ? 1 : room;
+  facingLeft_ = false;
+  startAnim(Anim::Friend, nowMs);
+}
+
+// Now and then a friend drops in: at most three a day, a couple of hours apart, only to a bird that is awake,
+// well and on its main screen. Who can come depends on the season, the weather and the time of day.
+void Ui::maybeFriend(const Env& env) {
+  const PetState& s = pet_.state();
+  if (screen_ != Screen::Main || !env.today.y || env.hour < 0 || s.stage == Stage::Egg || s.stage == Stage::Gone ||
+      pet_.asleep(env.epoch))
+    return;
+  Mood m = pet_.mood(env.epoch);
+  if (m != Mood::Content && m != Mood::Meh) return;
+  uint32_t now = env.nowMs;
+  Species own = pet_.species();
+  if (owlAt_) {  // after a 大吉 or an evening's work, if the bird is free soon after
+    bool fresh = now - owlAt_ < 15 * 60 * 1000u;
+    owlAt_ = 0;
+    if (fresh && own != Species::Owl) return friendVisit(FRIEND_OWL, now);
+  }
+  if ((int32_t)(now - nextFriend_) < 0) return;
+  nextFriend_ = now + rng_.range(FRIEND_MIN_MS / 60000, FRIEND_MAX_MS / 60000) * 60000;
+  PetBirds& b = pet_.birdsMut();
+  int32_t day = civil(env.today);
+  if (b.visitDay != day) {
+    b.visitDay = day;
+    b.visitsToday = 0;
+  }
+  if (b.visitsToday >= FRIEND_PER_DAY) return;
+  Friend can[FRIEND_COUNT];
+  int n = 0;
+  uint8_t mo = env.today.m;
+  bool daytime = env.hour >= 9 && env.hour < 19;
+  if (own != Species::Budgie && daytime) can[n++] = FRIEND_BUDGIE;
+  if (daytime && (b.visitDay % 2 != 0 || own == Species::Budgie)) can[n++] = FRIEND_PIGEON;  // off duty, just saying hello
+  if (mo == 12 || mo <= 2 || weather(now) == Weather::Snow) can[n++] = FRIEND_ENAGA;
+  if (mo >= 2 && mo <= 4) can[n++] = FRIEND_MEJIRO;
+  // The owl keeps its evenings special: every other evening at most.
+  if (own != Species::Owl && env.hour >= 19 && civil(env.today) % 2 == 0) can[n++] = FRIEND_OWL;
+  if (!n) return;
+  b.visitsToday++;
+  friendVisit(can[rng_.range(0, n - 1)], now);
 }
 
 int Ui::daysToHome(const Date& today) const {
@@ -563,8 +665,7 @@ void Ui::drawSay(const Env& env) {
     x = 2 - (off < w - SAY_FIT ? off : w - SAY_FIT);
   }
   // The bird sits behind the bubble with its face showing underneath, beak just below the tail.
-  int sh = pet_.state().stage == Stage::Chick ? spr::chick_idle.h : pet_.state().stage == Stage::Juvenile ? spr::juv_idle.h
-                                                                                                         : spr::adult_idle.h;
+  int sh = birdH();
   bool talk = (el / 180) % 2;
   drawBird(talk ? Pose::Happy : Pose::Idle, 4, bh - 4 + sh, false);
   frame_.fillRect(0, 0, LCD_W, bh, false);
@@ -682,7 +783,8 @@ void Ui::drawMain(const Env& env) {
 
   if (s.stage == Stage::Egg) {
     int wobble = (now / 400) % 4 == 1 ? 1 : ((now / 400) % 4 == 3 ? -1 : 0);
-    frame_.sprite(spr::egg, (LCD_W - spr::egg.w) / 2 + wobble, LCD_H - spr::egg.h);
+    const Sprite& egg = *lookOf(pet_.species()).egg;
+    frame_.sprite(egg, (LCD_W - egg.w) / 2 + wobble, LCD_H - egg.h);
     return;
   }
 
@@ -693,8 +795,10 @@ void Ui::drawMain(const Env& env) {
   int y = LCD_H - (hop_ ? 1 : 0);
   Weather w = weather(now);
   if (w == Weather::Rain && pose != Pose::Sleep) {  // the umbrella goes behind the bird, over its head
-    int hx = facingLeft_ ? birdX_ + birdW() - (birdW() * 2) / 3 - 5 : birdX_ + (birdW() * 2) / 3 - 5;
-    frame_.sprite(spr::umbrella, hx, y - (s.stage == Stage::Adult ? 20 : s.stage == Stage::Juvenile ? 17 : 14));
+    int hx = headX(birdX_, facingLeft_) + 3 - 5;
+    if (lookOf(pet_.species()).sideways)
+      hx = facingLeft_ ? birdX_ + birdW() - (birdW() * 2) / 3 - 5 : birdX_ + (birdW() * 2) / 3 - 5;
+    frame_.sprite(spr::umbrella, hx, y - birdH() - 3);
   }
   drawBird(pose, birdX_, y, facingLeft_);
   drawDecor(env, birdX_, y, facingLeft_);
@@ -710,7 +814,7 @@ void Ui::drawMain(const Env& env) {
 void Ui::drawSleep(const Env& env) {
   uint32_t now = env.nowMs;
   if (pet_.state().stage == Stage::Egg) {
-    frame_.sprite(spr::egg, 8, LCD_H - spr::egg.h);
+    frame_.sprite(*lookOf(pet_.species()).egg, 8, LCD_H - birdH());
   } else {
     drawBird(Pose::Sleep, 4, LCD_H, false);
   }
@@ -810,11 +914,11 @@ void Ui::drawAnim(const Env& env) {
 
   switch (anim_) {
     case Anim::Hatch:
-      if (el < 1600) {
-        int wob = alt ? 1 : -1;
-        frame_.sprite(spr::egg, (LCD_W - spr::egg.w) / 2 + wob, LCD_H - spr::egg.h);
-      } else if (el < 2400) {
-        frame_.sprite(spr::egg_crack, (LCD_W - spr::egg.w) / 2, LCD_H - spr::egg.h);
+      if (el < 2400) {
+        const Look& l = lookOf(pet_.species());
+        const Sprite& egg = el < 1600 ? *l.egg : *l.crack;
+        int wob = el < 1600 ? (alt ? 1 : -1) : 0;
+        frame_.sprite(egg, (LCD_W - egg.w) / 2 + wob, LCD_H - egg.h);
       } else {
         drawBird(Pose::Happy, cx, LCD_H, false);
         if (alt) frame_.sprite(spr::sparkle, cx - 6, 2);
@@ -962,6 +1066,9 @@ void Ui::drawAnim(const Env& env) {
     case Anim::Occasion:
       drawOccasionAnim(el);
       return;
+    case Anim::Friend:
+      drawFriend(el);
+      return;
     case Anim::FocusDone:
       if (el < 2500) {
         frame_.textCentered("DONE!", 2, 2);
@@ -973,6 +1080,9 @@ void Ui::drawAnim(const Env& env) {
       }
       return;
     case Anim::Hug:
+      if (el < PIGEON_MS) return drawDelivery(el, spr::heart_s, (LCD_W - spr::heart_s.w) / 2, 10);
+      el -= PIGEON_MS;
+      alt = (el / 300) % 2;
       if (el < 1800) {  // who it is from
         frame_.textCentered("HUG!", 2, 2);
         frame_.textCentered(hugFrom_[0] ? hugFrom_ : "FOR YOU", 14);
@@ -1075,7 +1185,8 @@ void Ui::drawOta(const Env& env) {
 
 void Ui::drawMessage(const Env& env) {
   uint32_t el = env.nowMs - t0_;
-  if (el < 1500) {
+  if (el < PIGEON_MS) return drawDelivery(el, spr::mail_s, (LCD_W - spr::mail_s.w) / 2, 9);
+  if (el < MSG_INTRO_MS) {
     int bounce = (el / 200) % 2;
     frame_.sprite(spr::mail, (LCD_W - spr::mail.w) / 2, 7 - bounce, false, Pattern::Solid, 1);
     if ((el / 300) % 2) frame_.sprite(spr::sparkle, 6, 3);
@@ -1088,7 +1199,7 @@ void Ui::drawMessage(const Env& env) {
   frame_.text(head, 7, 1);
   int w = Frame::textWidth(msgText_, 2);
   uint32_t pass = (uint32_t)(LCD_W + w) * 55;
-  int x = LCD_W - (int)(((el - 1500) % pass) / 55);
+  int x = LCD_W - (int)(((el - MSG_INTRO_MS) % pass) / 55);
   frame_.text(msgText_, x, 9, 2);
 }
 
@@ -1233,8 +1344,8 @@ void Ui::drawOmikuji(uint32_t el) {
 void Ui::drawDecor(const Env& env, int bx, int by, bool flip) {
   uint32_t now = env.nowMs;
   bool alt = (now / 400) % 2;
-  int top = by - (pet_.state().stage == Stage::Adult ? 17 : pet_.state().stage == Stage::Juvenile ? 14 : 11);
-  int headX = flip ? bx + 1 : bx + birdW() - 6;
+  int top = by - birdH();
+  int hx = headX(bx, flip);
   switch (weather(now)) {
     case Weather::Rain:
       for (int i = 0; i < 5; i++) {  // drops falling past the umbrella
@@ -1257,7 +1368,7 @@ void Ui::drawDecor(const Env& env, int bx, int by, bool flip) {
       break;
     case Weather::Hot:
       frame_.sprite(spr::sun, LCD_W - 10, 1);
-      frame_.sprite(spr::sweat, flip ? headX - 3 : headX + 6, top + 4 + (alt ? 1 : 0));
+      frame_.sprite(spr::sweat, flip ? hx - 3 : hx + 6, top + 4 + (alt ? 1 : 0));
       break;
     default:
       break;
@@ -1364,4 +1475,113 @@ void Ui::drawFocus(const Env& env) {
   frame_.text(buf, LCD_W - w - 1, 1, 2);
   const char* unit = left >= 60 ? "MIN" : "SEC";
   frame_.text(unit, LCD_W - Frame::textWidth(unit) - 1, 12);
+}
+
+// ---------------------------------------------------------------- friends
+
+void Ui::drawFlyer(Friend f, int x, int bottom, bool flip, int wing, const Sprite* look) {
+  const FriendLook& fl = FRIENDS[f];
+  const Sprite& sp = look ? *look : *fl.sprite;
+  int top = bottom - sp.h;
+  frame_.sprite(sp, x, top, flip, Pattern::Pearl);  // patterned dots read as colour: green, grey wings
+  if (!wing) return;
+  const Sprite& w = wing == 1 ? spr::fr_wing_up : spr::fr_wing_dn;
+  int wy = wing == 1 ? top + fl.backY - (w.h - 1) : top + fl.backY;
+  if (f == FRIEND_OWL) {  // seen from the front: a wing either side
+    frame_.sprite(w, x - w.w + 1, wy, false);
+    frame_.sprite(w, x + sp.w - 1, wy, true);
+    return;
+  }
+  int wx = flip ? sp.w - fl.backX - w.w : fl.backX;
+  frame_.sprite(w, x + wx, wy, flip);
+}
+
+// The pigeon flies in from the right with the post under its feet, lets go over (dropX, dropY) and flies on.
+void Ui::drawDelivery(uint32_t el, const Sprite& cargo, int dropX, int dropY) {
+  const Sprite& pg = spr::fr_pigeon;
+  const uint32_t DROP = 1300;
+  int wing = (el / 120) % 2 ? 1 : 2;
+  int stopX = dropX + cargo.w / 2 - pg.w / 2, bottom = pg.h + 1;
+  int x, cy;
+  if (el < DROP) {
+    x = LCD_W - (int)((LCD_W - stopX) * el / DROP);
+    bottom += (el / 200) % 2;
+    cy = bottom;
+  } else {
+    uint32_t t = el - DROP;
+    x = stopX - (int)(t / 30);
+    cy = bottom + (int)(t / 25);
+    bottom -= (int)(t / 70);
+    if (cy > dropY) cy = dropY;
+    if (el / 250 % 2) frame_.sprite(spr::sparkle, dropX + cargo.w + 2, dropY - 4);
+  }
+  drawFlyer(FRIEND_PIGEON, x, bottom, true, wing);
+  int cx = el < DROP ? x + pg.w / 2 - cargo.w / 2 : dropX;
+  frame_.sprite(cargo, cx, cy);
+}
+
+void Ui::drawFriend(uint32_t el) {
+  const Sprite& sp = *FRIENDS[friend_].sprite;
+  // Walk from where the bird stood to the spot it makes room at, as the friend flies in.
+  int bx = birdX_;
+  if (el < 800 && fromX_ != birdX_) bx = fromX_ + (birdX_ - fromX_) * (int)el / 800;
+  bool mejiro = friend_ == FRIEND_MEJIRO;
+  // The mejiro sits in a plum branch; everyone else lands on the floor next to the bird.
+  if (mejiro) frame_.sprite(spr::fr_branch, LCD_W - spr::fr_branch.w, 7);
+  int landX = LCD_W - sp.w - 1, landB = mejiro ? 11 : LCD_H;
+  int wing = (el / 120) % 2 ? 1 : 2;
+  bool alt = (el / 300) % 2;
+
+  if (el < FRIEND_IN_MS) {  // flying in, down to its spot; the bird looks up
+    int p = (int)(el * 100 / FRIEND_IN_MS);
+    int x = LCD_W + 1 - (LCD_W + 1 - landX) * p / 100;
+    int bottom = 6 + (landB - 6) * p * p / 10000;
+    drawBird(Pose::Up, bx, LCD_H, false);
+    drawFlyer(friend_, x, bottom, true, wing);
+    return;
+  }
+  if (el >= FRIEND_OUT_MS) {  // off it goes, up and away; the bird waves goodbye
+    int q = (int)(el - FRIEND_OUT_MS);
+    drawBird(alt ? Pose::Happy : Pose::Idle, bx, LCD_H, false);
+    drawFlyer(friend_, landX + q / 60, landB - q / 45, false, wing);
+    return;
+  }
+  uint32_t s = el - FRIEND_IN_MS;
+  switch (friend_) {
+    case FRIEND_BUDGIE: {  // head-bobbing back and forth, chirping
+      bool bob = (s / 350) % 2;
+      drawBird(bob ? Pose::Happy : Pose::Idle, bx, LCD_H - (bob ? 1 : 0), false);
+      drawFlyer(friend_, landX, landB - (bob ? 0 : 1), true, 0);
+      for (int i = 0; i < 2; i++) frame_.sprite(spr::note, 21 + i * 3, 12 - (int)((s / 90 + i * 7) % 14));
+      break;
+    }
+    case FRIEND_ENAGA: {  // a fluffy snuggle in the snow
+      int x = landX - (int)(s / 400 < 3 ? s / 400 : 3);
+      drawBird(s > 1800 ? Pose::Happy : Pose::Idle, bx, LCD_H, false);
+      drawFlyer(friend_, x, landB, true, 0, (s / 600) % 2 ? &spr::fr_enaga_puff : nullptr);
+      for (int i = 0; i < 3; i++) {
+        int fx = 4 + i * 13 + (int)((s / 600 + i) % 2), fy = (int)((s / 160 + i * 6) % 22) - 3;
+        frame_.set(fx, fy, true);
+        frame_.set(fx + 1, fy + 1, true);
+      }
+      if (s > 1800) frame_.sprite(spr::heart_s, 22, 6 - (int)((s - 1800) / 200 % 5));
+      break;
+    }
+    case FRIEND_MEJIRO:  // sings from the blossom; the bird listens
+      drawBird(alt && s > 1500 ? Pose::Happy : Pose::Up, bx, LCD_H, false);
+      drawFlyer(friend_, landX, landB, true, 0);
+      for (int i = 0; i < 2; i++) frame_.sprite(spr::note, landX - 4 - i * 3, 5 - (int)((s / 120 + i * 4) % 8));
+      break;
+    case FRIEND_OWL: {  // sits quietly and blinks, slowly; the bird blinks with it. Luck sparkles around.
+      bool shut = s % 1200 < 250;
+      drawBird(shut ? Pose::Blink : Pose::Idle, bx, LCD_H, false);
+      drawFlyer(friend_, landX, landB, true, 0, shut ? &spr::fr_owl_blink : nullptr);
+      frame_.sprite(spr::sparkle, alt ? landX - 6 : LCD_W - 6, alt ? 3 : 1);
+      break;
+    }
+    default:  // the pigeon, if it ever stays: a bow and a coo
+      drawBird(alt ? Pose::Happy : Pose::Idle, bx, LCD_H, false);
+      drawFlyer(friend_, landX, landB - (alt ? 1 : 0), true, 0);
+      break;
+  }
 }

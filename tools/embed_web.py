@@ -13,6 +13,10 @@ sys.path.insert(0, str(ROOT / "tools"))
 from gen_sprites import parse  # noqa: E402
 
 icons = {name: rows for name, rows in parse(ROOT / "assets" / "sprites" / "icons.txt")}
+# The friends card and the new-egg picker draw the visiting birds and each species from their real sprites.
+icons.update({name: rows for name, rows in parse(ROOT / "assets" / "sprites" / "friends.txt") if not name.startswith("fr_wing")})
+for sheet, want in (("bird.txt", "adult_idle"), ("budgie.txt", "budgie_adult_idle"), ("owl.txt", "owl_adult_idle")):
+    icons.update({name: rows for name, rows in parse(ROOT / "assets" / "sprites" / sheet) if name == want})
 html = (ROOT / "web" / "index.html").read_text()
 html = html.replace("/*ICONS*/{}", json.dumps(icons, separators=(",", ":")))
 import hashlib
