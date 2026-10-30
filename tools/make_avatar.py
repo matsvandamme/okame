@@ -2,6 +2,8 @@
 """Telegram profile picture for the Okame bot, drawn from the real adult sprite (assets/sprites/bird.txt).
 
     python tools/make_avatar.py [out_dir]   -> avatar_color.png, avatar_lcd.png (640x640)
+
+Also redraws web/apple-touch-icon.png (180x180), the home-screen icon the dongle serves to iPhones.
 """
 import pathlib
 import sys
@@ -80,8 +82,8 @@ def pixels(paint):
     return px
 
 
-def render(px, bg, frame, name, dot_gap):
-    S, k = 640, 24 if frame else 25
+def render(px, bg, frame, name, dot_gap, S=640, k=None):
+    k = k or (24 if frame else 25)
     img = Image.new("RGB", (S, S), bg)
     d = ImageDraw.Draw(img)
     if frame:
@@ -99,11 +101,13 @@ def render(px, bg, frame, name, dot_gap):
     for (x, y), c in px.items():
         g = dot_gap
         d.rectangle((ox + x * k + g, oy + y * k + g, ox + (x + 1) * k - 1 - g, oy + (y + 1) * k - 1 - g), fill=c)
-    img.save(out / name)
+    img.save(name if isinstance(name, pathlib.Path) else out / name, optimize=True)
     return img
 
 
 render(pixels(colour), "#BFE3F2", False, "avatar_color.png", 0)
 render(pixels(lambda x, y, ch: LCD_INK if ch == "#" or (ch == "w" and (x + y) % 2) else None), "#F6D24A", True,
        "avatar_lcd.png", 2)
+# Full-bleed square: iOS rounds the corners itself, so the bird keeps a wide margin (7 px dots, ~70% of the icon).
+render(pixels(colour), "#BFE3F2", False, root / "web" / "apple-touch-icon.png", 0, S=180, k=7)
 print("wrote", out / "avatar_color.png", out / "avatar_lcd.png")
