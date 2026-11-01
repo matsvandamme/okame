@@ -86,6 +86,21 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .today small { display: block; opacity: .65; font-weight: 700; }
 .today p { margin: 4px 0 0; }
 .hug { flex-wrap: wrap; }
+.fuss { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 800; }
+.fuss .big { font-size: 28px; }
+.fuss small { display: block; opacity: .65; font-weight: 700; }
+.fuss .row { flex-basis: 100%; }
+.tricks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+.tricks span { border: 3px solid var(--ink); border-radius: 12px; background: #fff; padding: 6px 8px; font-weight: 900; font-size: 13px; }
+.tricks span small { display: block; font-weight: 700; opacity: .65; font-size: 11px; }
+.tricks span.locked { border-style: dashed; background: transparent; opacity: .45; }
+.dots { display: flex; gap: 6px; } .dots b { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--ink); background: #fff; }
+.dots b.on { background: var(--ink); }
+.age { display: flex; gap: 10px; align-items: center; margin-top: 4px; font-size: 13px; font-weight: 700; }
+.badge { font-size: 11px; font-weight: 900; border: 2px solid var(--ink); border-radius: 99px; padding: 1px 8px; background: #fff; }
+.badge.gold { background: #ffe36b; }
+.days { display: flex; gap: 4px; flex-wrap: wrap; } .days button { flex: 1 0 36px; min-width: 36px; padding: 8px 0; }
+.days button[aria-pressed="true"] { background: var(--ink); color: var(--yellow); }
 .hug #hugBack { flex-basis: 100%; }
 .hug small { display: block; opacity: .65; font-weight: 700; }
 .btn.small { padding: 8px 10px; font-size: 13px; width: auto; flex: 0 0 auto; }
@@ -247,6 +262,15 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <button class="btn small" id="hugBack">💛 Send one back</button>
   </section>
 
+  <section class="card fuss" id="fussCard" hidden>
+    <span class="big">💢</span>
+    <div style="flex:1"><span id="fussText">Okame is fussing for attention, but it has everything it needs.</span><small class="jp">わがまま！</small></div>
+    <div class="row">
+      <button class="btn dark small" id="fussCalm">🤫 Calm “no” <small class="jp">しーっ</small></button>
+      <button class="btn small" id="fussSpoil">🌾 Give in (millet)</button>
+    </div>
+  </section>
+
   <section class="card words" id="wordsCard" hidden>
     <h2>Okame can say… <span class="new">NEW</span> <span class="jp">ことば</span></h2>
     <p class="hint">Matthieu taught these. Tap one and Okame says it on its screen.</p>
@@ -277,16 +301,17 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 
   <section class="card panel-care" id="playCard">
     <h2>Play <span class="jp">あそぶ</span></h2>
-    <p class="hint" id="playHint">Duet: whistle the melody back. Peekaboo: tap when it pops out. Seed Rain: catch the seeds! Janken: best of three. Dance: copy Okame's moves.</p>
+    <p class="hint" id="playHint">Duet: whistle the melody back. Peekaboo: tap when it pops out. Seed Rain: catch the seeds! Janken: best of three. Dance: copy Okame's moves. Left or Right: guess which way it turns, like the very first Tamagotchi.</p>
     <div id="gamePick" class="row">
       <button class="btn" id="startDuet">🎵 Whistle duet</button>
       <button class="btn" id="startPeek">🌳 Peekaboo</button>
     </div>
     <button class="btn wide" id="startRain" style="margin-top:8px">🌧️ Seed Rain <small id="bestRain" style="opacity:.6"></small></button>
     <div class="row" id="gamePick2" style="margin-top:8px">
-      <button class="btn" id="startJanken">✊ Janken <span class="new">NEW</span></button>
-      <button class="btn" id="startDance">💃 Copy the dance <span class="new">NEW</span></button>
+      <button class="btn" id="startJanken">✊ Janken</button>
+      <button class="btn" id="startDance">💃 Copy the dance</button>
     </div>
+    <button class="btn wide" id="startLR" style="margin-top:8px">⬅️➡️ Left or Right? <span class="new">NEW</span> <small id="bestLR" style="opacity:.6"></small></button>
     <div id="gameLive" hidden>
       <canvas class="lcd mini" id="lcdMini" width="160" height="80"></canvas>
       <p class="hint" id="gameHint">…</p>
@@ -301,6 +326,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
         <button class="btn pad hand" data-p="scissors">✌️<small>チョキ</small></button>
         <button class="btn pad hand" data-p="paper">✋<small>パー</small></button>
       </div>
+      <div class="row" id="lrPad"><button class="btn pad" data-p="left">◀ Left</button><button class="btn pad" data-p="right">Right ▶</button></div>
       <div class="dance" id="dancePad">
         <button class="btn pad" data-p="left">◀ step</button><button class="btn pad" data-p="right">step ▶</button>
         <button class="btn pad" data-p="hop">⤴ hop</button><button class="btn pad" data-p="bow">🙇 bow</button>
@@ -309,7 +335,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
   </section>
 
   <section class="card panel-care" id="omikujiCard">
-    <h2>Omikuji <span class="jp">おみくじ</span> <span class="new">NEW</span></h2>
+    <h2>Omikuji <span class="jp">おみくじ</span></h2>
     <p class="hint" id="omiHint">Once a day, Okame shakes the shrine box and draws your fortune. Collect all six!</p>
     <button class="btn dark wide" id="omiBtn">⛩️ Draw today's fortune</button>
     <div class="omikuji" id="omiResult" hidden>
@@ -320,7 +346,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
   </section>
 
   <section class="card panel-care" id="focusCard">
-    <h2>Focus with Okame <span class="new">NEW</span> <span class="jp">いっしょにがんばろう</span></h2>
+    <h2>Focus with Okame <span class="jp">いっしょにがんばろう</span></h2>
     <p class="hint" id="focusHint">Studying or working? Okame sits by its little laptop and works along with you. Notes wait until you're done.</p>
     <div class="row" id="focusPick">
       <button class="btn" data-min="25">📚 25 min</button>
@@ -331,6 +357,29 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
       <button class="btn" id="focusStop">Stop</button>
     </div>
     <p class="hint" id="focusDone" style="margin-top:8px"></p>
+  </section>
+
+  <section class="card panel-care" id="trainCard">
+    <h2>Training &amp; tricks <span class="new">NEW</span> <span class="jp">しつけ</span></h2>
+    <p class="hint" id="trainHint">Now and then Okame fusses for no reason. A calm “no” teaches it manners, and every lesson unlocks a trick. Giving in with millet makes it happy, but it learns nothing.</p>
+    <div class="row" style="justify-content:space-between"><span style="flex:0 0 auto;font-weight:800">Training</span><div class="dots" id="trainDots" style="flex:0 0 auto"><b></b><b></b><b></b><b></b></div></div>
+    <div class="tricks" id="tricks"></div>
+    <button class="btn dark wide" id="trickBtn">✨ Show me a trick</button>
+    <div class="age" id="ageLine"></div>
+    <p class="hint" id="ageHint" style="margin-top:6px"></p>
+  </section>
+
+  <section class="card panel-care" id="clockCard">
+    <h2>Clock &amp; alarm <span class="new">NEW</span> <span class="jp">とけい</span></h2>
+    <div class="row">
+      <button class="btn" id="clockShow">🕐 Show the clock</button>
+      <label class="row" style="flex:1.4;font-weight:800;font-size:13px">Time on the covered cage <input type="checkbox" id="clockCover" style="flex:0 0 auto;width:22px;height:22px"></label>
+    </div>
+    <label for="alarmTime" style="margin-top:12px">Wake-up alarm <span class="jp" style="font-size:11px;opacity:.7">めざまし</span></label>
+    <div class="row"><input type="time" id="alarmTime" value="07:30"><label class="row" style="flex:0 0 auto;font-weight:800">On <input type="checkbox" id="alarmOn" style="flex:0 0 auto;width:22px;height:22px"></label></div>
+    <div class="days" id="alarmDays" style="margin-top:8px"></div>
+    <button class="btn dark wide" id="alarmSave" style="margin-top:10px">Save alarm</button>
+    <p class="hint" id="alarmHint" style="margin-top:8px">At that time Okame says good morning on its screen, and sends you a good-morning message on Telegram (so it works even when the laptop is closed).</p>
   </section>
 
   <section class="card panel-care" id="friendsCard">
@@ -758,6 +807,7 @@ function applyState(s) {
   $("friendsCard").hidden = s.stage === "egg" || !s.friends;
   $("omikujiCard").hidden = s.stage === "egg" || s.stage === "gone";
   showWardrobe(s);
+  showLife(s);
   showGame(s.game);
   $("nameCard").hidden = !!s.name || s.stage === "egg" || s.stage === "gone";
   $("setupBanner").hidden = !s.setup;
@@ -811,24 +861,28 @@ const GAME_TEXT = {
   janken: { chant: "Jan… ken… pick your hand!", reveal: "", done: "" },
   dance: { showing: "Watch Okame dance…", listening: "Your turn! Copy the moves.", good: "Perfect! One more move…",
            fail: "Oops! Wrong move.", done: "" },
+  lr: { ask: "Which way will Okame turn? Pick ◀ or ▶", turn: "", done: "" },
 };
 const HAND_EMOJI = { rock: "✊", scissors: "✌️", paper: "✋" };
 let lastGame = null, lastNote = -1;
 function showGame(g) {
   const starting = g && !lastGame;
   if (!g && lastGame && lastGame.type === "janken") toast(lastGame.wins > lastGame.losses ? "You beat Okame at janken! 🎉" : "Okame wins this time! Rematch? ✊");
+  else if (!g && lastGame && lastGame.type === "lr") toast(lastGame.hits >= 3 ? `${lastGame.hits} of ${lastGame.rounds} right! You read Okame's mind 🎉` : `${lastGame.hits} of ${lastGame.rounds}… Okame is unpredictable! Again?`);
   else if (!g && lastGame && lastGame.type === "dance") toast(`You copied ${lastGame.length - (lastGame.phase === "good" ? 0 : 1)} moves in a row! ${lastGame.length - (lastGame.phase === "good" ? 0 : 1) >= 5 ? "Dancing queen 💃" : "♥"} Best ${lastGame.best}`);
   else if (!g && lastGame) toast(lastGame.type === "rain" ? `${lastGame.score} seeds caught! ${lastGame.score > lastGame.best ? "New record! 🏆" : "♥"}` : lastGame.type === "duet" ? `Duet over: ${lastGame.wins}/${lastGame.rounds} rounds ♥` : `Found it ${lastGame.hits}/${lastGame.rounds} times ♥`);
   lastGame = g;
   $("gamePick").hidden = !!g;
   $("gamePick2").hidden = !!g;
   $("startRain").hidden = !!g;
+  $("startLR").hidden = !!g;
   $("gameLive").hidden = !g;
   $("playHint").hidden = !!g;
   if (!g) return;
   if (frameHex) drawLcd($("lcdMini").getContext("2d"), frameHex);
   if (starting && !$("tab-care").hidden) requestAnimationFrame(() => $("playCard").scrollIntoView({ behavior: "smooth", block: "end" }));
-  const score = g.type === "janken" ? `You ${g.wins} · Okame ${g.losses}` + (g.phase === "reveal" ? `  ${HAND_EMOJI[g.you]} vs ${HAND_EMOJI[g.bird]} ${g.result > 0 ? "You win!" : g.result < 0 ? "Okame wins!" : "Aiko! Again!"}` : "")
+  const score = g.type === "lr" ? `Round ${Math.min(g.round + (g.phase === "ask" ? 1 : 0), g.rounds)}/${g.rounds} · right ${g.hits}` + (g.phase === "turn" ? `  It went ${g.turn}! ${g.hit ? "You got it ♥" : "Missed!"}` : "")
+    : g.type === "janken" ? `You ${g.wins} · Okame ${g.losses}` + (g.phase === "reveal" ? `  ${HAND_EMOJI[g.you]} vs ${HAND_EMOJI[g.bird]} ${g.result > 0 ? "You win!" : g.result < 0 ? "Okame wins!" : "Aiko! Again!"}` : "")
     : g.type === "dance" ? `${g.length} moves · best ${g.best}` + (g.phase === "listening" ? "  " + "●".repeat(g.entered) + "○".repeat(Math.max(0, g.length - g.entered)) : "")
     : g.type === "rain" ? `Score ${g.score} · ${"♥".repeat(g.lives)} · best ${g.best}`
     : g.type === "duet" ? `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · wins ${g.wins}` : `Round ${Math.min(g.round + 1, g.rounds)}/${g.rounds} · found ${g.hits}`;
@@ -845,7 +899,8 @@ function showGame(g) {
   $("rainPad").hidden = g.type !== "rain";
   $("jankenPad").hidden = g.type !== "janken";
   $("dancePad").hidden = g.type !== "dance";
-  const live = g.type === "rain" || (g.type === "janken" ? g.phase === "chant" : g.type === "dance" ? g.phase === "listening" :
+  $("lrPad").hidden = g.type !== "lr";
+  const live = g.type === "rain" || (g.type === "lr" ? g.phase === "ask" : g.type === "janken" ? g.phase === "chant" : g.type === "dance" ? g.phase === "listening" :
     g.type === "duet" ? g.phase === "listening" : (g.phase === "hidden" || g.phase === "peeking"));
   document.querySelectorAll(".pad").forEach((b) => b.disabled = !live);
 }
@@ -875,7 +930,8 @@ $("startPeek").onclick = () => startGame("peek");
 $("startRain").onclick = () => startGame("rain");
 $("startJanken").onclick = () => startGame("janken");
 $("startDance").onclick = () => startGame("dance");
-document.querySelectorAll("#jankenPad .pad, #dancePad .pad").forEach((b) => b.onclick = () => { chirp(2600, 0, 0.09); gameInput(b.dataset.p); });
+$("startLR").onclick = () => startGame("lr");
+document.querySelectorAll("#jankenPad .pad, #dancePad .pad, #lrPad .pad").forEach((b) => b.onclick = () => { chirp(2600, 0, 0.09); gameInput(b.dataset.p); });
 
 // ---------- omikuji ----------
 const OMIKUJI = [
@@ -941,6 +997,97 @@ $("hatchBtn").onclick = async () => {
   const r = await api("/api/new-egg", { species: pickedSpecies || "cockatiel" });
   if (!r.ok) return;
   toast(`A fresh ${(SPECIES[pickedSpecies] || SPECIES.cockatiel).en.toLowerCase()} egg. 🥚`);
+  refresh();
+};
+
+// ---------- training, old age, clock & alarm ----------
+const TRICKS = [["👋", "Wave", "ばいばい"], ["🌀", "Spin", "くるくる"], ["🙇", "Bow", "おじぎ"], ["🙃", "Hang upside down", "さかさま"]];
+const PARTIES = [7, 10, 30, 50, 100, 200, 365];
+const DAYNAMES = ["M", "T", "W", "T", "F", "S", "S"];
+let alarmDays = 0x1f, alarmDirty = false;
+DAYNAMES.forEach((d, i) => {
+  const b = document.createElement("button");
+  b.className = "btn"; b.textContent = d; b.setAttribute("aria-label", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][i]);
+  b.onclick = () => { alarmDays ^= 1 << i; alarmDirty = true; showDays(); };
+  $("alarmDays").append(b);
+});
+function showDays() { [...$("alarmDays").children].forEach((b, i) => b.setAttribute("aria-pressed", !!(alarmDays & (1 << i)))); }
+["alarmTime", "alarmOn"].forEach((id) => $(id).addEventListener("input", () => { alarmDirty = true; }));
+let fussWas = false;
+function showLife(s) {
+  const l = s.life;
+  const alive = s.stage !== "egg" && s.stage !== "gone";
+  $("trainCard").hidden = !l || !alive;
+  $("clockCard").hidden = !l;
+  $("fussCard").hidden = !(l && l.fuss);
+  if (!l) return;
+  if (l.fuss && !fussWas) { chirp(2600, 0, 0.08); chirp(2600, 0.14, 0.08); chirp(2900, 0.28, 0.12); }  // a cross little squawk
+  fussWas = l.fuss;
+  $("fussText").textContent = `${s.name || "Okame"} is fussing for attention, but it has everything it needs.`;
+  [...$("trainDots").children].forEach((b, i) => b.classList.toggle("on", i < l.training));
+  $("tricks").replaceChildren(...TRICKS.map(([e, en, jp], i) => {
+    const sp = document.createElement("span");
+    const got = l.tricks & (1 << i);
+    sp.className = got ? "" : "locked";
+    sp.innerHTML = `${got ? e : "❔"} ${got ? en : "Lesson " + (i + 1)}<small class="jp">${got ? jp : "まだ"}</small>`;
+    return sp;
+  }));
+  $("trickBtn").disabled = !l.tricks;
+  $("trickBtn").textContent = l.tricks ? "✨ Show me a trick" : "✨ No tricks yet: wait for a fuss";
+  // Age, parties, old age and the golden legend.
+  const next = PARTIES.find((d) => d > (s.ageDays || 0));
+  const badges = (l.senior ? `<span class="badge">👓 wise old bird</span>` : "") + (l.golden ? `<span class="badge gold">✨ golden</span>` : "");
+  $("ageLine").innerHTML = `<span>🎂 ${s.ageDays || 0} days old</span>${badges}`;
+  $("ageHint").textContent = (next ? `Next party at ${next} days. ` : "") +
+    (l.golden ? "A golden bird: the rarest of all. 金色のオカメ ✨" :
+     l.senior ? "A wise old bird now: it naps a little more and eats a little less." :
+     "From 30 days old, a bird grows wise. Legend says one cared for almost perfectly turns to gold ✨");
+  $("bestLR").textContent = l.lrBest ? `· best ${l.lrBest}/5` : "";
+  $("clockCover").checked = !!l.clockOnCover;
+  if (!alarmDirty && document.activeElement !== $("alarmTime")) {
+    const a = l.alarm;
+    if (a.on || a.h || a.m) $("alarmTime").value = `${String(a.h).padStart(2, "0")}:${String(a.m).padStart(2, "0")}`;
+    $("alarmOn").checked = !!a.on;
+    if (a.days) alarmDays = a.days;
+    showDays();
+  }
+}
+$("fussCalm").onclick = async () => {
+  const r = await api("/api/fuss", { a: "calm" });
+  if (!r.ok) return toast("It already calmed down by itself.");
+  toast(r.trick >= 0 ? `Good bird! It learned a trick: ${TRICKS[r.trick][1]} ${TRICKS[r.trick][0]}` : "Calm and settled. Good bird ♥");
+  if (r.trick >= 0) setTimeout(() => [0, 0.12, 0.24, 0.36].forEach((t, i) => chirp(2000 + i * 300, t, 0.12)), 2400);
+  refresh();
+};
+$("fussSpoil").onclick = async () => {
+  const r = await api("/api/fuss", { a: "spoil" });
+  if (!r.ok) return toast("It already calmed down by itself.");
+  happyChirp(); toast("Millet! It's very happy… and a little spoiled 😄");
+  refresh();
+};
+$("trickBtn").onclick = async () => {
+  ac();
+  const r = await api("/api/trick", {});
+  if (!r.ok) return toast("Not now: Okame is busy or asleep.");
+  happyChirp(); toast("Look at the screen! ✨");
+};
+$("clockShow").onclick = async () => {
+  const r = await api("/api/clock", { show: 1 });
+  if (!r.ok) toast("Not now: Okame is busy.");
+};
+$("clockCover").onchange = async () => {
+  await api("/api/clock", { cover: $("clockCover").checked ? 1 : 0 });
+  toast($("clockCover").checked ? "The covered cage shows the time 🕐" : "Just zzz on the covered cage.");
+  refresh();
+};
+$("alarmSave").onclick = async () => {
+  const [h, m] = ($("alarmTime").value || "07:30").split(":").map(Number);
+  const on = $("alarmOn").checked ? 1 : 0;
+  if (on && !alarmDays) return toast("Pick at least one day.");
+  const r = await api("/api/alarm", { h, m, days: alarmDays, on });
+  if (!r.ok) return toast("Couldn't save the alarm.");
+  alarmDirty = false;
+  toast(on ? `Alarm set for ${$("alarmTime").value} ⏰ おはよう！` : "Alarm off.");
   refresh();
 };
 

@@ -537,6 +537,125 @@ int main(int argc, char** argv) {
       s.shot(n);
     }
   }
+  {  // 0.6: training and tricks, old age and the golden form, parties, Left or Right, the clock and the alarm
+    const char* sp[] = {"cockatiel", "budgie", "owl"};
+    for (int k = 0; k < 3; k++) {
+      Sim s;
+      s.pet.setSpecies(Species(k));
+      s.pet.reset(s.env.epoch);
+      s.stage(Stage::Adult, Variant::Pied);
+      s.env.today = {2026, 11, 13};
+      s.env.hour = 14;
+      s.env.minute = 5;
+      char n[64];
+      auto shot = [&](const char* what) {
+        snprintf(n, sizeof n, "d%d_%s_%s", k, sp[k], what);
+        s.shot(n);
+      };
+      s.pet.lifeMut().tricks = 0xf;
+      s.pet.lifeMut().training = 4;
+      s.run(400);
+      s.pet.lifeMut().fussAt = s.env.epoch;
+      s.run(350);
+      shot("00_fuss_a");
+      s.run(350);
+      shot("01_fuss_b");
+      s.pet.lifeMut().fussAt = 0;
+      s.ui.calmed(1, s.t);
+      s.run(500);
+      shot("02_calm_sulk");
+      s.run(1300);
+      shot("03_calm_ok");
+      s.run(1000);
+      shot("04_new_trick_banner");
+      const char* tn[] = {"wave", "spin", "bow", "hang"};
+      uint32_t at[] = {300, 1600, 3200};
+      for (int tr = 0; tr < TRICK_COUNT; tr++) {
+        s.run(6000);
+        s.ui.showTrick(tr, s.t);
+        uint32_t done = 0;
+        for (int i = 0; i < 3; i++) {
+          s.run(at[i] - done);
+          done = at[i];
+          char w[24];
+          snprintf(w, sizeof w, "1%d_trick_%s_%d", tr, tn[tr], i);
+          shot(w);
+        }
+      }
+      s.run(5000);
+      s.tweak([](PetState& st) { st.born -= 3 * rules::DAY; });  // 8 days old: the day-7 party plays by itself
+      s.run(500);
+      shot("20_party_days");
+      s.run(2600);
+      shot("21_party_cake");
+      s.run(700);
+      shot("22_party_cake_b");
+      s.run(5000);
+      s.pet.lifeMut().senior = 1;  // the senior moment plays on its own, from the main screen
+      s.run(400);
+      shot("30_senior_words");
+      s.run(3000);
+      shot("31_senior_bird");
+      s.run(3000);
+      shot("32_senior_main");
+      for (int h = 1; h < HAT_COUNT; h++) {
+        PetState ps = s.pet.state();
+        ps.hat = h;
+        s.pet.load(ps);
+        s.run(300);
+        char w[24];
+        snprintf(w, sizeof w, "33_senior_hat%d", h);
+        shot(w);
+      }
+      PetState ps = s.pet.state();
+      ps.hat = 0;
+      s.pet.load(ps);
+      s.pet.lifeMut().golden = 1;
+      s.run(500);
+      shot("40_golden_flash");
+      s.run(2000);
+      shot("41_golden_words");
+      s.run(2400);
+      shot("42_golden_bird");
+      s.run(4000);
+      for (int i = 0; i < 12; i++) {
+        s.run(300);
+        if (s.ui.frame().get(0, 0) || i == 11) break;
+      }
+      shot("43_golden_main");
+      s.ui.forceAnim(Anim::Trick, s.t);
+      s.ui.showTrick(TRICK_HANG, s.t);
+      s.run(800);
+      shot("44_golden_hang");
+      s.run(5000);
+      s.ui.startGame(Ui::Game::LeftRight, s.t);
+      s.run(300);
+      shot("50_lr_ask");
+      s.ui.gameInput(Press::Right, s.t);
+      s.run(500);
+      shot(s.ui.leftRight().hit() ? "51_lr_hit" : "51_lr_miss");
+      s.run(1200);
+      s.ui.gameInput(Press::Left, s.t);
+      s.run(500);
+      shot(s.ui.leftRight().hit() ? "52_lr_hit" : "52_lr_miss");
+      s.run(12000);
+      s.run(4000);
+      s.ui.showClock(s.t);
+      s.run(300);
+      shot("60_clock");
+      s.run(9000);
+      s.pet.lifeMut().clockOnCover = 1;
+      s.pet.act(Action::Light, s.env.epoch);
+      s.run(700);
+      shot("61_lights_clock");
+      s.pet.lifeMut().alarm = {14, 6, 0x7f, 1};
+      s.env.minute = 6;
+      s.run(500);
+      shot("62_wake_words");
+      s.run(2600);
+      shot("63_wake_bird");
+    }
+  }
   {  // Frame sequence of the main screen for the web mock server
     Sim s;
     s.stage(Stage::Adult, Variant::Pearl);

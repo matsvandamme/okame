@@ -288,3 +288,32 @@ void Dance::input(Move m, uint32_t now) {
     phase_ = Phase::Good;
   }
 }
+
+void LeftRight::start(uint32_t seed, uint32_t now) {
+  rng_ = Rng(seed);
+  round_ = hits_ = 0;
+  timedOut_ = false;
+  phase_ = Phase::Ask;
+  t0_ = now;
+}
+
+void LeftRight::update(uint32_t now) {
+  uint32_t el = now - t0_;
+  if (phase_ == Phase::Ask && el >= TIMEOUT_MS) {
+    phase_ = Phase::Done;
+    timedOut_ = true;
+  } else if (phase_ == Phase::Turn && el >= TURN_MS) {
+    phase_ = round_ >= ROUNDS ? Phase::Done : Phase::Ask;
+    t0_ = now;
+  }
+}
+
+void LeftRight::input(bool right, uint32_t now) {
+  if (phase_ != Phase::Ask) return;
+  guess_ = right;
+  turn_ = rng_.range(0, 1);
+  if (hit()) hits_++;
+  round_++;
+  phase_ = Phase::Turn;
+  t0_ = now;
+}

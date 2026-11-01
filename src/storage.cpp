@@ -41,6 +41,17 @@ void loadBirds(Pet& pet) {
 
 void saveBirds(const PetBirds& b) { prefs.putBytes("pet3", &b, sizeof b); }
 
+void loadLife(Pet& pet) {
+  size_t len = prefs.getBytesLength("pet4");
+  if (len < 2 || len > sizeof(PetLife)) return;  // later releases append fields: a shorter save loads zero-filled
+  PetLife l;
+  memset(&l, 0, sizeof l);
+  prefs.getBytes("pet4", &l, len);
+  pet.loadLife(l);
+}
+
+void saveLife(const PetLife& l) { prefs.putBytes("pet4", &l, sizeof l); }
+
 int loadNetworks(SavedNetwork* out, int max) {
   size_t len = prefs.getBytesLength("nets");
   int n = len / sizeof(SavedNetwork);

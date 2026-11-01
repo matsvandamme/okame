@@ -484,6 +484,231 @@ void test_the_pigeon_brings_the_post() {
   TEST_ASSERT_EQUAL(2, p.birds().visits[FRIEND_PIGEON]);
 }
 
+
+// ---------------------------------------------------------------- 0.6: training, old age, golden
+
+// A content adult born `days` ago, all needs met, at noon.
+static Pet adultAged(uint32_t days, uint16_t mistakes = 0, uint16_t affection = 0) {
+  Pet p = hatched();
+  PetState st = p.state();
+  st.stage = Stage::Adult;
+  st.born = T0 - days * DAY;
+  st.hunger = st.happy = MAX_STAT;
+  st.mistakes = mistakes;
+  st.affection = affection;
+  st.lastTick = T0;
+  p.load(st);
+  return p;
+}
+
+void test_fuss_only_when_needs_met_and_fades_without_a_mistake() {
+  Pet p = adultAged(5);
+  p.tick(T0 + MIN);
+  TEST_ASSERT_FALSE(p.maybeFuss(T0 + MIN, 100, 0));  // first call only schedules
+  uint32_t t = p.life().nextFuss;
+  TEST_ASSERT_TRUE(t >= T0 + MIN + HOUR);
+  PetState st = p.state();
+  st.hunger = 1;
+  p.load(st);
+  TEST_ASSERT_FALSE(p.maybeFuss(t, 100, 0));  // hungry: a real need, not a fuss
+  st.hunger = MAX_STAT;
+  p.load(st);
+  TEST_ASSERT_TRUE(p.maybeFuss(t, 100, 0));
+  TEST_ASSERT_TRUE(p.fussing(t + MIN));
+  TEST_ASSERT_FALSE(p.needsAttention(t + MIN));  // the relay never nags about a tantrum
+  uint16_t m = p.state().mistakes;
+  TEST_ASSERT_FALSE(p.fussing(t + Pet::FUSS_LASTS));  // ignored: it fades
+  p.maybeFuss(t + Pet::FUSS_LASTS, 100, 0);
+  TEST_ASSERT_EQUAL(0, p.life().fussAt);
+  TEST_ASSERT_EQUAL(m, p.state().mistakes);
+  g_hour = 23;
+  TEST_ASSERT_FALSE(p.maybeFuss(p.life().nextFuss, 100, 0));  // never at night
+}
+
+void test_calm_no_teaches_tricks_and_training_means_fewer_fusses() {
+  Pet p = adultAged(5);
+  uint32_t now = T0;
+  p.maybeFuss(now, 100, 0);
+  int fusses = 0;
+  for (int day = 100; day < 103; day++)
+    for (int i = 0; i < 8; i++) {
+      now = p.life().nextFuss > now ? p.life().nextFuss : now + HOUR;
+      if (p.maybeFuss(now, day, i)) fusses++;
+    }
+  TEST_ASSERT_EQUAL(6, fusses);  // untrained: twice a day
+  TEST_ASSERT_EQUAL(-1, p.calmFuss(now + Pet::FUSS_LASTS + 1));  // too late, it already faded
+  for (int k = 0; k < TRICK_COUNT; k++) {
+    PetLife l = p.life();
+    l.fussAt = now;
+    p.loadLife(l);
+    TEST_ASSERT_EQUAL(k, p.calmFuss(now + MIN));
+  }
+  TEST_ASSERT_EQUAL(TRICK_COUNT, p.life().training);
+  TEST_ASSERT_EQUAL(TRICK_COUNT, p.trickCount());
+  TEST_ASSERT_TRUE(p.pickTrick(7) >= 0);
+  fusses = 0;
+  for (int day = 200; day < 206; day++)
+    for (int i = 0; i < 8; i++) {
+      now = p.life().nextFuss > now ? p.life().nextFuss : now + HOUR;
+      if (p.maybeFuss(now, day, i)) fusses++;
+    }
+  TEST_ASSERT_EQUAL(2, fusses);  // fully trained: every third day
+  PetLife l = p.life();
+  l.fussAt = now;
+  p.loadLife(l);
+  uint8_t joy = p.state().happy;
+  TEST_ASSERT_EQUAL(Result::Ok, p.spoilFuss(now + MIN));
+  TEST_ASSERT_TRUE(p.state().happy >= joy);
+  TEST_ASSERT_EQUAL(TRICK_COUNT, p.life().training);  // giving in teaches nothing
+}
+
+void test_age_parties_once_and_only_the_latest_after_a_gap() {
+  Pet p = adultAged(4);
+  TEST_ASSERT_EQUAL(0, p.partyDue(T0));
+  TEST_ASSERT_EQUAL(7, p.partyDue(T0 + 3 * DAY));
+  p.markParty(7);
+  TEST_ASSERT_EQUAL(0, p.partyDue(T0 + 4 * DAY));
+  TEST_ASSERT_EQUAL(30, p.partyDue(T0 + 40 * DAY));  // missed 10: only 30 plays, once
+  p.markParty(30);
+  TEST_ASSERT_EQUAL(0, p.partyDue(T0 + 45 * DAY));
+  Pet egg(hourFn);
+  egg.reset(T0);
+  TEST_ASSERT_EQUAL(0, egg.partyDue(T0 + 400 * DAY));
+}
+
+void test_senior_at_thirty_days_and_the_golden_rule() {
+  // Manon's case: already an adult when 0.6 arrives, with old mistakes that don't count against her.
+  Pet p = adultAged(29, 5, 250);
+  p.tick(T0 + MIN);
+  TEST_ASSERT_EQUAL(1, p.life().baselined);
+  TEST_ASSERT_EQUAL(5, p.life().adultMistakes);
+  TEST_ASSERT_FALSE(p.senior());
+  PetState st = p.state();
+  st.mistakes = 6;  // one slip since: still golden
+  st.born = T0 - 30 * DAY;  // and today she turns 30 days old
+  p.load(st);
+  p.tick(T0 + 2 * MIN);
+  TEST_ASSERT_TRUE(p.senior());
+  TEST_ASSERT_TRUE(p.golden());
+  // Two slips, or too little affection: a plain senior.
+  Pet q = adultAged(29, 0, 250);
+  q.tick(T0 + MIN);
+  st = q.state();
+  st.mistakes = 2;
+  st.born = T0 - 30 * DAY;
+  q.load(st);
+  q.tick(T0 + 2 * MIN);
+  TEST_ASSERT_TRUE(q.senior());
+  TEST_ASSERT_FALSE(q.golden());
+  Pet r = adultAged(30, 0, 150);
+  r.tick(T0 + MIN);
+  TEST_ASSERT_TRUE(r.senior());
+  TEST_ASSERT_FALSE(r.golden());
+}
+
+void test_senior_eats_less_often() {
+  Pet p = adultAged(31);
+  p.tick(T0 + MIN);
+  TEST_ASSERT_TRUE(p.senior());
+  uint8_t h = p.state().hunger;
+  p.tick(p.state().lastTick + HUNGER_EVERY);
+  TEST_ASSERT_EQUAL(h, p.state().hunger);
+  p.tick(p.state().lastTick + HUNGER_EVERY / 4);
+  TEST_ASSERT_EQUAL(h - 1, p.state().hunger);
+}
+
+void test_life_on_a_new_egg_and_rollback() {
+  Pet p = adultAged(31);
+  p.tick(T0 + MIN);
+  PetLife l = p.life();
+  l.training = 3;
+  l.tricks = 7;
+  l.alarm = {7, 30, 0x1f, 1};
+  l.clockOnCover = 1;
+  p.loadLife(l);
+  p.reset(T0 + DAY);
+  TEST_ASSERT_EQUAL(0, p.life().training);
+  TEST_ASSERT_EQUAL(0, p.life().senior);
+  TEST_ASSERT_EQUAL(0, p.life().baselined);
+  TEST_ASSERT_EQUAL(7, p.life().alarm.h);  // settings stay
+  TEST_ASSERT_EQUAL(1, p.life().clockOnCover);
+  PetLife other{};
+  other.version = 9;
+  other.training = 2;
+  p.loadLife(other);  // another layout: ignored
+  TEST_ASSERT_EQUAL(0, p.life().training);
+}
+
+
+void test_left_or_right_five_rounds() {
+  LeftRight g;
+  uint32_t t = 1000;
+  g.start(9, t);
+  for (int i = 0; i < 10 && g.phase() != LeftRight::Phase::Done; i++) {
+    g.input(true, t);
+    TEST_ASSERT_EQUAL(LeftRight::Phase::Turn, g.phase());
+    g.input(false, t);  // a second tap during the turn is ignored
+    t += LeftRight::TURN_MS;
+    g.update(t);
+  }
+  TEST_ASSERT_EQUAL(LeftRight::Phase::Done, g.phase());
+  TEST_ASSERT_EQUAL(LeftRight::ROUNDS, g.round());
+  TEST_ASSERT_EQUAL(g.hits() >= 3, g.won());
+  LeftRight idle;
+  idle.start(1, 0);
+  idle.update(LeftRight::TIMEOUT_MS + 1);
+  TEST_ASSERT_TRUE(idle.timedOut());
+}
+
+void test_party_plays_on_the_main_screen_once() {
+  Pet p = adultAged(7);
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 13}, 14);
+  e.epoch = T0;
+  for (int i = 0; i < 5; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_EQUAL(Screen::Anim, ui.screen());
+  TEST_ASSERT_EQUAL(7, ui.takeParty());
+  TEST_ASSERT_EQUAL(0, ui.takeParty());
+  for (int i = 0; i < 200; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_EQUAL(0, ui.takeParty());
+  TEST_ASSERT_EQUAL(7, p.life().partyDays);
+}
+
+void test_alarm_greets_on_its_days_only() {
+  Pet p = adultAged(5);
+  p.lifeMut().alarm = {7, 30, 0b0011111, 1};  // weekdays
+  p.lifeMut().partyDays = 7;
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 14}, 7);  // a Saturday
+  e.epoch = T0;
+  e.minute = 30;
+  for (int i = 0; i < 3; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_NOT_EQUAL(Screen::Anim, ui.screen());
+  e.today = {2026, 11, 16};  // Monday
+  e.nowMs += 100;
+  ui.update(e);
+  TEST_ASSERT_EQUAL(Screen::Anim, ui.screen());
+  for (int i = 0; i < 80; i++) { e.nowMs += 100; ui.update(e); }  // the greeting ends; same minute: not again
+  TEST_ASSERT_NOT_EQUAL(Screen::Anim, ui.screen());
+}
+
+void test_calm_no_shows_the_new_trick() {
+  Pet p = adultAged(5);
+  p.lifeMut().partyDays = 7;
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 13}, 14);
+  e.epoch = T0;
+  ui.update(e);
+  p.lifeMut().fussAt = T0;
+  int k = p.calmFuss(T0 + MIN);
+  TEST_ASSERT_EQUAL(TRICK_WAVE, k);
+  ui.calmed(k, e.nowMs);
+  for (int i = 0; i < 30; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_EQUAL(Screen::Anim, ui.screen());  // the trick follows the calm-down
+  TEST_ASSERT_TRUE(ui.showTrick(TRICK_WAVE, e.nowMs));
+  TEST_ASSERT_FALSE(ui.showTrick(TRICK_HANG, e.nowMs));  // not learned
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_egg_hatches_after_two_minutes);
@@ -523,5 +748,15 @@ int main() {
   RUN_TEST(test_no_friend_during_focus);
   RUN_TEST(test_daikichi_brings_the_owl);
   RUN_TEST(test_the_pigeon_brings_the_post);
+  RUN_TEST(test_fuss_only_when_needs_met_and_fades_without_a_mistake);
+  RUN_TEST(test_calm_no_teaches_tricks_and_training_means_fewer_fusses);
+  RUN_TEST(test_age_parties_once_and_only_the_latest_after_a_gap);
+  RUN_TEST(test_senior_at_thirty_days_and_the_golden_rule);
+  RUN_TEST(test_senior_eats_less_often);
+  RUN_TEST(test_life_on_a_new_egg_and_rollback);
+  RUN_TEST(test_left_or_right_five_rounds);
+  RUN_TEST(test_party_plays_on_the_main_screen_once);
+  RUN_TEST(test_alarm_greets_on_its_days_only);
+  RUN_TEST(test_calm_no_shows_the_new_trick);
   return UNITY_END();
 }

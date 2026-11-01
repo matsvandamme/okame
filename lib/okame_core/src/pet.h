@@ -103,6 +103,31 @@ struct PetBirds {
   uint32_t eggStart;              // the egg this species belongs to; another egg (say, after a rollback) is a cockatiel
 };
 
+// Tricks a trained bird can do, one per training level.
+enum Trick : uint8_t { TRICK_WAVE, TRICK_SPIN, TRICK_BOW, TRICK_HANG, TRICK_COUNT };
+// Age milestones (days) that get a party.
+constexpr uint16_t PARTY_DAYS[] = {7, 10, 30, 50, 100, 200, 365};
+
+// Everything added in 0.6: training, old age, the golden form, the clock and the alarm. Its own key ("pet4"), so
+// 0.5 still finds "pet", "pet2" and "pet3" exactly as it left them after a rollback. Later releases append fields
+// and keep LIFE_VERSION: a shorter save loads with the new fields zeroed.
+struct PetLife {
+  uint16_t version;
+  uint8_t training;               // 0..4, one trick per level
+  uint8_t tricks;                 // bit per Trick
+  uint32_t fussAt;                // epoch a fuss started (0 = none)
+  uint32_t nextFuss;              // the earliest the next fuss may come
+  int32_t fussDay;                // civil day that fussToday counts
+  uint8_t fussToday;
+  uint8_t senior, golden;
+  uint8_t baselined;              // adultMistakes holds the mistakes count at adulthood
+  uint16_t adultMistakes;
+  uint16_t partyDays;             // the last milestone celebrated
+  uint8_t lrBest;
+  uint8_t clockOnCover;           // show the time on the covered cage
+  struct Alarm { uint8_t h, m, days, on; } alarm;  // days: bit 0 = Monday
+};
+
 class Pet {
  public:
   static constexpr uint16_t VERSION = 1;
@@ -158,6 +183,28 @@ class Pet {
   void setSpecies(Species sp) { b_.species = uint8_t(sp) < uint8_t(Species::Count) ? uint8_t(sp) : 0; }
   bool recordVisit(Friend f);  // true the first time this friend comes
 
+  // 0.6 additions (see PetLife).
+  static constexpr uint16_t LIFE_VERSION = 1;
+  static constexpr uint32_t FUSS_LASTS = 20 * rules::MIN, SENIOR_AT = 30 * rules::DAY;
+  const PetLife& life() const { return l_; }
+  PetLife& lifeMut() { return l_; }
+  void loadLife(const PetLife& l);
+  // Now and then a well-cared-for bird fusses for attention (わがまま). Starts one if it's time; true when it did.
+  bool maybeFuss(uint32_t now, int32_t today, uint32_t rnd);
+  bool fussing(uint32_t now) const { return l_.fussAt && now - l_.fussAt < FUSS_LASTS && !asleep(now) && !s_.lightsOff; }
+  // A calm "no": training goes up. Returns the trick just learned, or -1 (no fuss, or nothing new).
+  int calmFuss(uint32_t now);
+  // Giving in: millet makes it happy, but it learns nothing.
+  Result spoilFuss(uint32_t now);
+  int trickCount() const;
+  int pickTrick(uint32_t rnd) const;  // a known trick, or -1
+  // The highest age milestone reached but not celebrated yet (days), or 0. markParty() once it has played.
+  uint16_t partyDue(uint32_t now) const;
+  void markParty(uint16_t days) { if (days > l_.partyDays) l_.partyDays = days; }
+  bool senior() const { return l_.senior; }
+  bool golden() const { return l_.golden; }
+  void recordLeftRight(int hits);
+
  private:
   void step(uint32_t now, uint32_t dt);
   void grow(uint32_t now);
@@ -168,5 +215,6 @@ class Pet {
   PetState s_;
   PetExtra x_{};
   PetBirds b_{BIRDS_VERSION, 0, 0, {}, 0, 0, 0};
+  PetLife l_{LIFE_VERSION};
   HourFn hour_;
 };

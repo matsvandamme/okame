@@ -17,6 +17,8 @@ void loadExtra(Pet& pet);   // 0.4 additions, their own key so a rollback leaves
 void saveExtra(const PetExtra& x);
 void loadBirds(Pet& pet);   // 0.5: species and friends, under "pet3"
 void saveBirds(const PetBirds& b);
+void loadLife(Pet& pet);    // 0.6: training, old age, clock and alarm, under "pet4"
+void saveLife(const PetLife& l);
 int loadNetworks(SavedNetwork* out, int max);
 void saveNetworks(const SavedNetwork* nets, int n);
 String apPassword();   // generated once, shown on the LCD

@@ -221,5 +221,46 @@ async def t_update():
     check("no double report after the reboot", len(said(MATTHIEU)) == 1 and not said(HARUKI))
 TESTS.append(t_update)
 
+
+async def t_life():
+    from datetime import datetime as dt
+    sent.clear()
+    r.device["state"] = {"fw": "0.5.1"}
+    await r.handle(msg(MATTHIEU, "/trick"))
+    check("/trick on 0.5.1 asks for an update", "update" in said(MATTHIEU)[-1] and not queued("trick"))
+    r.device["state"] = {"fw": "0.6.0-dev", "name": "Manon"}
+    await r.handle(msg(MATTHIEU, "/trick"))
+    qid = r.db.execute("select max(id) from queue where kind='trick'").fetchone()[0]
+    check("/trick queues a trick", len(queued("trick")) == 1)
+    await r.acked({"id": qid, "result": "none"})
+    check("no tricks yet is explained", "tricks yet" in said(MATTHIEU)[-1])
+    sent.clear()
+    await r.on_event({"type": "party", "days": 10})
+    check("a party reaches both", any("10 days old" in x for x in said(MATTHIEU)) and any("10 days old" in x for x in said(HARUKI)))
+    sent.clear()
+    await r.on_event({"type": "golden"})
+    check("golden reaches both", any("GOLDEN" in x for x in said(HARUKI)) and any("GOLDEN" in x for x in said(MATTHIEU)))
+    sent.clear()
+    await r.on_event({"type": "alarm_set", "h": 7, "m": 30, "days": 0b0011111, "on": True})
+    monday = dt(2026, 11, 2, 7, 31, tzinfo=r.TZ)
+    await r.alarms(monday.replace(hour=7, minute=29))
+    check("no alarm before its time", not sent)
+    await r.alarms(monday)
+    await r.alarms(monday.replace(minute=33))
+    check("the alarm wakes Haruki once, not Matthieu", len(said(HARUKI)) == 1 and not said(MATTHIEU))
+    sent.clear()
+    await r.alarms(dt(2026, 11, 7, 7, 31, tzinfo=r.TZ))  # Saturday: not set
+    check("no alarm on a day off", not sent)
+    await r.on_event({"type": "alarm_set", "h": 7, "m": 30, "days": 127, "on": False})
+    await r.alarms(dt(2026, 11, 9, 7, 31, tzinfo=r.TZ))
+    check("an alarm switched off stays quiet", not sent)
+    await r.whats_new()
+    await r.whats_new()
+    check("what's new 0.6: once each, Haruki's own", sum("わがまま" in x for x in said(HARUKI)) == 1
+          and sum("/trick" in x for x in said(MATTHIEU)) == 1)
+    r.device["state"] = {"fw": "0.6.0", "name": "Manon", "stage": "adult", "life": {"golden": True}}
+    check("the status shows golden", "golden" in r.status_caption())
+TESTS.append(t_life)
+
 if __name__ == "__main__":
     asyncio.run(main())

@@ -19,15 +19,18 @@ struct Env {
   int otaProgress = -1;    // 0..100 while updating
   Date today{};            // local calendar date; y == 0 until the clock is known
   int8_t hour = -1;        // local hour, -1 until the clock is known
+  int8_t minute = -1;
 };
 
 enum class Screen : uint8_t {
-  Sleep, Setup, Main, Menu, Stats, Anim, Duet, Peek, Pair, Gone, Ota, Lights, Message, Picture, Code, Rain, Say, Janken, Dance, Focus
+  Sleep, Setup, Main, Menu, Stats, Anim, Duet, Peek, Pair, Gone, Ota, Lights, Message, Picture, Code, Rain, Say, Janken, Dance, Focus,
+  LeftRight, Clock
 };
 
 enum class Anim : uint8_t {
   Hatch, Seed, Millet, Bath, Vet, Refused, NotNeeded, Scritch, Greet, Visitor, Whistle,
-  GameWin, GameLose, Sleeping, Gift, Love, Hug, Countdown, HomeDay, Omikuji, Occasion, FocusDone, Friend
+  GameWin, GameLose, Sleeping, Gift, Love, Hug, Countdown, HomeDay, Omikuji, Occasion, FocusDone, Friend,
+  Calm, Trick, Party, Senior, Golden, Wake
 };
 
 // Weather where Haruki is, from the relay.
@@ -59,14 +62,10 @@ class Ui {
   void showHug(const char* from, uint32_t nowMs);
   // The 💛 button on the phone page: hearts float up from the bird.
   // Something that plays only once (hatching, the daily cross-off, a homecoming, a holiday greeting).
-  bool onceAnim() const {
-    return screen_ == Screen::Anim && (anim_ == Anim::Hatch || anim_ == Anim::Countdown || anim_ == Anim::HomeDay ||
-                                       anim_ == Anim::Occasion);
-  }
+  bool onceAnim() const { return screen_ == Screen::Anim && onceKind(anim_); }
   void love(uint32_t nowMs) {
     // Never over a once-only moment: hatching, the daily cross-off, the home-day party, a holiday greeting.
-    bool once = anim_ == Anim::Hatch || anim_ == Anim::Countdown || anim_ == Anim::HomeDay || anim_ == Anim::Occasion;
-    if (screen_ == Screen::Main || (screen_ == Screen::Anim && !once)) startAnim(Anim::Love, nowMs);
+    if (screen_ == Screen::Main || (screen_ == Screen::Anim && !onceKind(anim_))) startAnim(Anim::Love, nowMs);
   }
   // Days until Matthieu is home (0 = today), or -1 when no date is set or it has passed.
   int daysToHome(const Date& today) const;
@@ -86,14 +85,14 @@ class Ui {
   Weather weather(uint32_t nowMs) const { return nowMs - wxAt_ < 4 * 3600 * 1000u ? wx_ : Weather::Clear; }
 
   // Games are started and played from the phone page.
-  enum class Game : uint8_t { Duet, Peek, Rain, Janken, Dance };
+  enum class Game : uint8_t { Duet, Peek, Rain, Janken, Dance, LeftRight };
   bool startGame(Game g, uint32_t nowMs);
   bool startGame(bool duet, uint32_t nowMs) { return startGame(duet ? Game::Duet : Game::Peek, nowMs); }
   void showGift(int unlocked, uint32_t nowMs) { giftItem_ = unlocked; startAnim(Anim::Gift, nowMs); }
   void gameInput(Press p, uint32_t nowMs);
   bool inGame() const {
     return screen_ == Screen::Duet || screen_ == Screen::Peek || screen_ == Screen::Rain || screen_ == Screen::Janken ||
-           screen_ == Screen::Dance;
+           screen_ == Screen::Dance || screen_ == Screen::LeftRight;
   }
   // Today's omikuji: the bird shakes the shrine box, a stick drops, and the fortune appears in big kanji.
   // A 大吉 brings the lucky owl round straight afterwards.
@@ -108,6 +107,15 @@ class Ui {
   void friendVisit(Friend f, uint32_t nowMs);
   Friend visiting() const { return friend_; }
   int takeNewFriend() { int f = newFriend_; newFriend_ = -1; return f; }  // a friend met for the first time, once
+
+  // Training (0.6). A calm "no" to a fuss: the bird settles, and shows off a trick it just learned (or -1).
+  void calmed(int newTrick, uint32_t nowMs);
+  // A trick on request (from the page or Telegram); trick < 0 picks a known one. False when it knows none or is busy.
+  bool showTrick(int trick, uint32_t nowMs);
+  // The clock, for a few seconds (from the page).
+  bool showClock(uint32_t nowMs);
+  int takeParty() { int d = partyOut_; partyOut_ = 0; return d; }              // an age party just played (days)
+  int takeMilestone() { int m = milestoneOut_; milestoneOut_ = 0; return m; }  // 1 senior, 2 golden, once
 
   // Set when the user held the button long enough to ask for a pairing code.
   bool takePairRequest() {
@@ -132,6 +140,7 @@ class Ui {
   Peekaboo& peek() { return peek_; }
   Janken& janken() { return janken_; }
   Dance& dance() { return dance_; }
+  LeftRight& leftRight() { return lr_; }
 
  private:
   enum class Pose : uint8_t { Idle, Blink, Up, Flat, Peck, Sleep, Happy };
@@ -168,6 +177,25 @@ class Ui {
   void drawOccasionAnim(uint32_t el);
   void drawDecor(const Env& env, int bx, int by, bool flip);  // season and weather touches on the main screen
   void drawFocus(const Env& env);
+  // 0.6
+  static bool onceKind(Anim a) {
+    return a == Anim::Hatch || a == Anim::Countdown || a == Anim::HomeDay || a == Anim::Occasion || a == Anim::Party ||
+           a == Anim::Senior || a == Anim::Golden;
+  }
+  uint32_t animMs() const;
+  void maybeLife(const Env& env);
+  void checkAlarm(const Env& env);
+  void drawGlasses(Pose pose, int x, int y, bool flip);
+  void drawTrick(uint32_t el);
+  void drawLifeAnim(const Env& env, uint32_t el);
+  void drawLeftRight(const Env& env);
+  void drawClock(const Env& env);
+  void drawTime(const Env& env, int y, bool on);
+  LeftRight lr_;
+  int trick_ = 0, pendingTrick_ = -1, partyDays_ = 0, partyOut_ = 0, milestoneOut_ = 0;
+  bool newTrick_ = false, lastSenior_ = false, lastGolden_ = false, seniorDue_ = false, goldenDue_ = false;
+  int32_t alarmDay_ = 0;
+  uint32_t nextFussCheck_ = 0, nextTrick_ = 0, dozeUntil_ = 0;
   uint32_t focusEnd_ = 0, focusStart_ = 0;
   int focusDoneMin_ = 0, rainRecord_ = 0;
   Occasion occ_ = Occasion::None;

@@ -252,6 +252,9 @@ void apply(JsonDocument& cmd, const String& raw) {
     app::pet.extraMut().rivalRain = cmd["score"] | 0;
     app::requestSave();
     ack(id, "ok");
+  } else if (type == "trick") {  // Telegram /trick
+    bool ok = app::ui.showTrick(-1, now);
+    ack(id, ok ? "shown" : app::pet.trickCount() ? "busy" : "none");
   } else if (type == "ota") {  // Telegram /update: look for a signed release now; acked with the result
     ota::checkNow();
     otaAck = id;

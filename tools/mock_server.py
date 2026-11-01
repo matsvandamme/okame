@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Serve the built phone page with a fake API, for screenshots without the dongle.
 
-usage: mock_server.py [port] [--setup] [--named] [--full] [--owl|--budgie] [--gone]
+usage: mock_server.py [port] [--setup] [--named] [--full] [--owl|--budgie] [--gone] [--fuss] [--golden]
 """
 import json
 import pathlib
@@ -38,6 +38,12 @@ if FULL:
         "species": "cockatiel", "friends": {"met": 0b10011, "visits": [4, 7, 0, 0, 1]},
         "words": 3, "wordList": [{"t": "OYASUMI", "learning": False}, {"t": "I LOVE YOU", "learning": False},
                                  {"t": "GOEDEMORGEN", "learning": True}],
+    })
+    STATE.update({
+        "fw": "0.6.0", "ageDays": 31,
+        "life": {"training": 2, "tricks": 0b0011, "fuss": "--fuss" in sys.argv, "senior": True,
+                 "golden": "--golden" in sys.argv, "party": 30, "lrBest": 4, "clockOnCover": True,
+                 "alarm": {"h": 7, "m": 30, "days": 0x1f, "on": True}},
     })
 for flag in ("owl", "budgie"):
     if f"--{flag}" in sys.argv:
@@ -117,7 +123,7 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"ok": True})
         if self.path == "/api/game-start":
             g = q.get("g")
-            STATE["game"] = {"type": g, "phase": {"duet": "listening", "janken": "chant", "dance": "listening"}.get(g, "hidden"),
+            STATE["game"] = {"type": g, "phase": {"duet": "listening", "janken": "chant", "dance": "listening", "lr": "ask"}.get(g, "hidden"),
                              "round": 0, "rounds": 3 if g == "duet" else 5, "wins": 0, "hits": 0, "losses": 1,
                              "length": 4, "entered": 1, "best": 6}
             return self.send(200, {"ok": True})
@@ -131,7 +137,25 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/api/focus":
             STATE["focusLeft"] = int(q.get("min", 0)) * 60 - 1 if int(q.get("min", 0)) else -1
             return self.send(200, {"ok": True})
-        if self.path in ("/api/love", "/api/wear", "/api/say"):
+        if self.path == "/api/fuss":
+            life = STATE.get("life") or {}
+            if not life.get("fuss"):
+                return self.send(409, {"error": "not fussing"})
+            life["fuss"] = False
+            trick = -1
+            if q.get("a") != "spoil" and life["training"] < 4:
+                trick = life["training"]
+                life["training"] += 1
+                life["tricks"] |= 1 << trick
+            return self.send(200, {"trick": trick})
+        if self.path == "/api/alarm":
+            STATE["life"]["alarm"] = {"h": int(q["h"]), "m": int(q["m"]), "days": int(q["days"]), "on": q.get("on") == "1"}
+            return self.send(200, {"ok": True})
+        if self.path == "/api/clock":
+            if "cover" in q:
+                STATE["life"]["clockOnCover"] = q["cover"] == "1"
+            return self.send(200, {"ok": True})
+        if self.path in ("/api/love", "/api/wear", "/api/say", "/api/trick"):
             return self.send(200, {"ok": True})
         if self.path == "/api/gift":
             return self.send(200, {"gift": -1})

@@ -20,6 +20,12 @@ void Pet::reset(uint32_t now) {
   s_.hunger = s_.happy = 3;
   s_.eggStart = s_.lastTick = now;
   b_.eggStart = now;  // the species carries over to this egg
+  // Training, old age and parties start over; the clock and alarm are settings and stay.
+  PetLife keepLife = l_;
+  memset(&l_, 0, sizeof l_);
+  l_.version = LIFE_VERSION;
+  l_.alarm = keepLife.alarm;
+  l_.clockOnCover = keepLife.clockOnCover;
 }
 
 bool Pet::load(const PetState& st) {
@@ -71,21 +77,33 @@ void Pet::grow(uint32_t now) {
   } else if (s_.stage == Stage::Juvenile && ageSeconds(now) >= ADULT_AT) {
     s_.stage = Stage::Adult;
     s_.weight += 30;
+    l_.adultMistakes = s_.mistakes;  // the golden form looks at care from here on
+    l_.baselined = 1;
     if (s_.mistakes <= 2)
       s_.variant = s_.affection >= 300 ? Variant::Pied : Variant::Pearl;
     else if (s_.mistakes <= 6)
       s_.variant = Variant::Grey;
     else
       s_.variant = Variant::Scruffy;
+  } else if (s_.stage == Stage::Adult && !l_.senior && ageSeconds(now) >= SENIOR_AT) {
+    // A cosy old age. A bird that was cared for almost perfectly as an adult turns golden (lutino): the secret form.
+    l_.senior = 1;
+    if (s_.mistakes - l_.adultMistakes <= 1 && s_.affection >= 200) l_.golden = 1;
   }
 }
 
 void Pet::step(uint32_t now, uint32_t dt) {
+  // A bird that was already grown up when 0.6 arrived: its care counts from today.
+  if (s_.stage == Stage::Adult && !l_.baselined) {
+    l_.adultMistakes = s_.mistakes;
+    l_.baselined = 1;
+  }
   grow(now);
   if (s_.stage == Stage::Egg || s_.stage == Stage::Gone) return;
 
   bool night = isNight(now);
   uint32_t hungerEvery = night ? HUNGER_EVERY * 2 : HUNGER_EVERY;
+  if (l_.senior) hungerEvery += hungerEvery / 4;  // a senior eats a little less often
   uint32_t happyEvery = night ? HAPPY_EVERY * 2 : HAPPY_EVERY;
   if (s_.sick) happyEvery /= 2;
 
@@ -388,4 +406,81 @@ Occasion occasion(const Date& t, const PetExtra& x) {
   if (md == 1231) return Occasion::YearEnd;  // よいお年を: あけおめ only from midnight
   if (md <= 103) return Occasion::NewYear;
   return Occasion::None;
+}
+
+// ---------------------------------------------------------------- 0.6 additions
+
+void Pet::loadLife(const PetLife& l) {
+  if (l.version != LIFE_VERSION) return;
+  l_ = l;
+  if (l_.training > TRICK_COUNT) l_.training = TRICK_COUNT;
+  l_.tricks &= (1 << TRICK_COUNT) - 1;
+}
+
+bool Pet::maybeFuss(uint32_t now, int32_t today, uint32_t rnd) {
+  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone || asleep(now) || s_.lightsOff || s_.sick) return false;
+  if (s_.hunger < 2 || s_.happy < 2 || s_.poop >= 2) return false;  // only when every need is met
+  if (l_.fussAt && now - l_.fussAt < FUSS_LASTS) return false;
+  l_.fussAt = 0;  // an ignored fuss just fades: never a care mistake
+  if (!l_.nextFuss) {  // first time (or after an update): not straight away
+    l_.nextFuss = now + HOUR + rnd % (2 * HOUR);
+    return false;
+  }
+  if (now < l_.nextFuss) return false;
+  if (l_.fussDay != today) {
+    l_.fussDay = today;
+    l_.fussToday = 0;
+  }
+  // Better trained, fewer tantrums: twice a day untrained, once from level 2, every third day when fully trained.
+  int limit = l_.training >= TRICK_COUNT ? (today % 3 == 0) : l_.training >= 2 ? 1 : 2;
+  if (l_.fussToday >= limit) return false;
+  l_.fussToday++;
+  l_.fussAt = now;
+  l_.nextFuss = now + 3 * HOUR + rnd % (3 * HOUR);
+  return true;
+}
+
+int Pet::calmFuss(uint32_t now) {
+  if (!fussing(now)) return -1;
+  l_.fussAt = 0;
+  if (l_.training >= TRICK_COUNT) return -1;
+  int trick = l_.training++;
+  l_.tricks |= 1 << trick;
+  if (s_.affection < 1000) s_.affection += 5;
+  return trick;
+}
+
+Result Pet::spoilFuss(uint32_t now) {
+  if (!fussing(now)) return Result::NotNeeded;
+  l_.fussAt = 0;
+  return act(Action::Millet, now);
+}
+
+int Pet::trickCount() const {
+  int n = 0;
+  for (int i = 0; i < TRICK_COUNT; i++) n += (l_.tricks >> i) & 1;
+  return n;
+}
+
+int Pet::pickTrick(uint32_t rnd) const {
+  int n = trickCount();
+  if (!n) return -1;
+  int k = rnd % n;
+  for (int i = 0; i < TRICK_COUNT; i++)
+    if ((l_.tricks >> i) & 1 && !k--) return i;
+  return -1;
+}
+
+uint16_t Pet::partyDue(uint32_t now) const {
+  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone || !s_.born) return 0;
+  uint32_t days = ageSeconds(now) / DAY;
+  uint16_t due = 0;
+  for (uint16_t d : PARTY_DAYS)
+    if (days >= d && d > l_.partyDays) due = d;  // a late update celebrates only the latest milestone
+  return due;
+}
+
+void Pet::recordLeftRight(int hits) {
+  if (hits > l_.lrBest) l_.lrBest = hits;
+  recordGame(hits >= 3, 0);
 }

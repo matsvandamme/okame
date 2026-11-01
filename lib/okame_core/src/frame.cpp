@@ -53,6 +53,17 @@ void Frame::sprite(const Sprite& s, int x, int y, bool flip, Pattern pat, int sc
   }
 }
 
+void Frame::spriteUpsideDown(const Sprite& s, int x, int y, bool flip, Pattern pat) {
+  for (int sy = 0; sy < s.h; sy++) {
+    for (int sx = 0; sx < s.w; sx++) {
+      if (!bitAt(s.mask, s.w, sx, sy)) continue;
+      bool on = bitAt(s.ink, s.w, sx, sy);
+      if (s.pat && bitAt(s.pat, s.w, sx, sy)) on = patternDot(pat, sx, sy);
+      set(x + (flip ? s.w - 1 - sx : sx), y + s.h - 1 - sy, on);
+    }
+  }
+}
+
 void Frame::spriteInverse(const Sprite& s, int x, int y, bool flip) {
   for (int sy = 0; sy < s.h; sy++) {
     for (int sx = 0; sx < s.w; sx++) {

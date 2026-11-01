@@ -20,7 +20,7 @@ import sqlite3
 import ssl
 import time
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -393,7 +393,9 @@ def status_caption():
     seen = "awake on Wi-Fi ✨" if online() else \
         f"napping away from Wi-Fi 💤 (last seen {datetime.fromtimestamp(device['last_seen'], TZ):%a %H:%M})"
     name = esc(s.get("name")) or "Okame"
-    return (f"<b>{name}</b> · {s.get('stage')} · {s.get('ageDays', 0)}d · {s.get('weight', 0)}g\n"
+    life = s.get("life") or {}
+    wise = " · ✨ golden" if life.get("golden") else " · 👓 wise old bird" if life.get("senior") else ""
+    return (f"<b>{name}</b> · {s.get('stage')} · {s.get('ageDays', 0)}d · {s.get('weight', 0)}g{wise}\n"
             f"Food {hearts(s.get('hunger'))}\nJoy  {hearts(s.get('happy'))}\n"
             f"Mood: {s.get('mood')}{' · 🤒 sick' if s.get('sick') else ''}{' · 💩' * int(s.get('poop') or 0)}\n{seen}")
 
@@ -407,7 +409,7 @@ HELP = ("<b>オカメ Okame</b>, your pocket bird 🐦💛\n\n"
         "<b>Look after me</b>\n/status how I'm doing · /photo my screen\n/feed /treat /bath /vet /scritch /cover\n\n"
         "<b>Make my screen sparkle</b>\n/note &lt;text&gt; a love note on my screen 💌\n/hug a big hug on my screen 🤗\n/home &lt;date&gt; count down the days until you're home 🚢\n"
         "/teach &lt;word&gt; teach me to say something 🦜 · /words\n"
-        "/catch play Feather Catch against Haruki's Seed Rain score 🌻\n"
+        "/catch play Feather Catch against Haruki's Seed Rain score 🌻\n/trick I show you a trick I learned ✨\n"
         "/draw &lt;idea&gt; I draw a pixel picture 🎨\n/hearts /fireworks /sakura /rain ✨\n\n"
         "<b>Just for fun</b>\n/song &lt;idea&gt; I compose a whistle 🎶\n/diary my day · /haiku a poem\n"
         "…or simply chat with me!")
@@ -445,6 +447,11 @@ async def handle(msg):
         return await home_cmd(chat, name, arg)
     if cmd == "/update":
         return await update_cmd(chat)
+    if cmd == "/trick":
+        if not egg_has(V06):
+            return await say(chat, UPDATE_FIRST)
+        enqueue("trick", {"by": name}, chat)
+        return await say(chat, "✨ Watch this!" if online() else "✨ I'll show you a trick the moment I'm back on Wi-Fi 💤")
     if cmd == "/hug":
         if not egg_has(V04):
             return await say(chat, UPDATE_FIRST)
@@ -561,6 +568,7 @@ async def telegram_loop():
         {"command": "hearts", "description": "Hearts on the screen 💛"}, {"command": "fireworks", "description": "Fireworks ✨"},
         {"command": "sakura", "description": "Falling sakura 🌸"}, {"command": "song", "description": "Okame composes a whistle 🎶"},
         {"command": "diary", "description": "Okame's diary 📔"}, {"command": "haiku", "description": "A haiku 🍃"},
+        {"command": "trick", "description": "Okame shows a trick ✨"},
         {"command": "help", "description": "Everything Okame can do"}]
     await tg("setMyCommands", commands=commands)
     for chat in CFG.get("partner_chats", []):  # Matthieu's menu also has the update button; Haruki's stays simple
@@ -653,6 +661,13 @@ async def acked(ack):
         await say(chat, "✓ Your note is on my screen now 💌")
     elif kind == "hug" and result == "shown":
         await say(chat, "🤗 Your hug just arrived on my screen. ピヨ💛")
+    elif kind == "trick":
+        if result == "shown":
+            await asyncio.sleep(1.8)  # mid-trick
+            await show(chat, "Ta-da! ✨ ピヨ", label="trick")
+        else:
+            await say(chat, "I don't know any tricks yet 🙈 Haruki teaches me manners on my page: every lesson is a new trick."
+                      if result == "none" else "Not now, I'm busy 🙈 Try again in a moment.")
     elif kind == "ota":
         watch = kv_get("ota_watch")
         if watch and watch["id"] == row["id"] and not result.startswith("installed"):  # fw_changed reports those
@@ -698,6 +713,7 @@ def egg_has(version):
 V04 = (0, 4, 0)  # hug, words, countdown, weather, dates, rival: older eggs answer "unknown" to these
 V05 = (0, 5, 0)  # visiting friends, the pigeon post, budgie and owl eggs
 V051 = (0, 5, 1)  # /update: check GitHub for a signed release now
+V06 = (0, 6, 0)  # tricks, age parties, old age and the golden form, the alarm
 UPDATE_FIRST = "My little screen needs an update before I can do that 🛠️ ピヨ"
 
 
@@ -1077,8 +1093,61 @@ async def friend_met(e):
         await show(u["chat_id"], FRIEND_NEWS[i])
 
 
+async def party(e):
+    """An age milestone (7, 10, 30… days): a little party on the screen, and both of them hear about it."""
+    d = int(e.get("days") or 0)
+    if d <= 0:
+        return
+    name = esc(device["state"].get("name")) or "Okame"
+    line = "I'm one year old today!! 🎂🎉" if d == 365 else f"I'm {d} days old today! 🎂 Party time ピヨピヨ🎉"
+    event(name, f"turned {d} days old")
+    for u in users():
+        await show(u["chat_id"], f"<b>{name}</b>: {line}")
+
+
+async def grew_wise(e):
+    name = esc(device["state"].get("name")) or "Okame"
+    golden = e.get("type") == "golden"
+    event(name, "turned golden" if golden else "became a wise old bird")
+    text = (f"✨✨ <b>{name} turned GOLDEN!</b> ✨✨\nA bird cared for almost perfectly grows into the rarest form of all: "
+            f"a golden lutino. 金色のオカメ! Thank you for looking after me so well 💛") if golden else \
+        (f"👓 <b>{name} is a wise old bird now.</b> I'll nap a little more and eat a little less, "
+         f"and I still love you both the same ピヨ")
+    for u in users():
+        await show(u["chat_id"], text)
+
+
+def alarm_set(e):
+    kv_set("alarm", {"h": int(e.get("h", 7)), "m": int(e.get("m", 0)), "days": int(e.get("days", 0)),
+                     "on": bool(e.get("on"))})
+
+
+async def alarm_event(e):
+    alarm_set(e)
+
+
+async def alarms(now):
+    """Haruki's wake-up alarm, set on the page: a good morning on her phone (the laptop may well be closed)."""
+    a = kv_get("alarm")
+    if not a or not a.get("on") or not (a["days"] >> now.weekday()) & 1:
+        return
+    due = now.replace(hour=a["h"], minute=a["m"], second=0, microsecond=0)
+    today = now.date().isoformat()
+    if not (due <= now < due + timedelta(minutes=10)) or kv_get("alarm_fired", "") == today:
+        return
+    kv_set("alarm_fired", today)
+    ids = {p["chat_id"] for p in partners()}
+    for u in users():
+        if u["chat_id"] in ids:
+            continue
+        text = "ピヨ！おはよう ☀️ 起きる時間だよ！" if u["lang"] == "ja" else \
+            "ピヨ! Goedemorgen ☀️ Tijd om op te staan!" if u["lang"] == "nl" else "ピヨ! Good morning ☀️ Time to wake up!"
+        await show(u["chat_id"], text)
+
+
 EVENT_HANDLERS = {"love": love_tapped, "omikuji": omikuji_drawn, "focus": focus_done, "rain": rain_record,
-                  "friend": friend_met}
+                  "friend": friend_met, "party": party, "senior": grew_wise, "golden": grew_wise,
+                  "alarm_set": alarm_event}
 async def weather_now():
     await send_weather(force=True)
 
@@ -1104,6 +1173,20 @@ WHATS_NEW_05 = (
     "See who has visited under <b>Okame's friends</b> on my page.")
 
 
+WHATS_NEW_06_MATTHIEU = (
+    "✨ <b>I updated myself again!</b> ピヨ Classic Tamagotchi things now:\n\n"
+    "💢 I sometimes throw a little tantrum; Haruki teaches me manners, and every lesson is a new trick. "
+    "Ask for one with /trick\n🎂 parties on my 7th, 10th, 30th… day\n👓 from 30 days I grow into a wise old bird, "
+    "and legend says a bird cared for almost perfectly turns golden ✨\n⬅️➡️ Left or Right?, the very first "
+    "Tamagotchi game\n🕐 a clock, and a wake-up alarm for Haruki")
+WHATS_NEW_06_HARUKI = (
+    "✨ <b>I updated myself again!</b> ピヨ New on my page:\n\n"
+    "💢 now and then I fuss for no reason (わがまま): a calm “no” teaches me manners, and every lesson unlocks a trick\n"
+    "🎂 age parties, and from 30 days I become a wise old bird… maybe even a golden one ✨\n"
+    "⬅️➡️ Left or Right?, the game from the very first Tamagotchi\n"
+    "⏰ a clock and a wake-up alarm: I'll send you a good morning here on Telegram")
+
+
 async def whats_new():
     ids = {p["chat_id"] for p in partners()}
     if not kv_get("whats_new_0.4"):
@@ -1114,6 +1197,10 @@ async def whats_new():
         kv_set("whats_new_0.5", time.time())
         for u in users():
             await say(u["chat_id"], WHATS_NEW_05)
+    if egg_has(V06) and not kv_get("whats_new_0.6"):
+        kv_set("whats_new_0.6", time.time())
+        for u in users():
+            await say(u["chat_id"], WHATS_NEW_06_MATTHIEU if u["chat_id"] in ids else WHATS_NEW_06_HARUKI)
 
 
 CONNECT_HOOKS = [send_home, resend_words, send_dates, weather_now, send_rival, whats_new]
@@ -1149,6 +1236,7 @@ async def mornings():
                 greet = "おはよう！" if u["lang"] == "ja" else "Goedemorgen!" if u["lang"] == "nl" else "Good morning!"
                 await show(u["chat_id"], f"☀️ {greet} ピヨ\n" + status_caption() + extra)
             await birthdays(now)
+        await alarms(now)
         if now.hour == 20 and kv_get("evening", "") != now.date().isoformat():
             kv_set("evening", now.date().isoformat())
             from datetime import timedelta

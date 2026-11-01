@@ -30,6 +30,8 @@ class Frame {
   // Draw a sprite with its top-left at (x, y); flip mirrors horizontally.
   void sprite(const Sprite& s, int x, int y, bool flip = false, Pattern pat = Pattern::Solid,
               int scale = 1);
+  // Upside down (a bird hanging from its perch); flip still mirrors horizontally.
+  void spriteUpsideDown(const Sprite& s, int x, int y, bool flip = false, Pattern pat = Pattern::Solid);
   // Draw with ink and clear swapped (white-on-black), for use on a filled background.
   void spriteInverse(const Sprite& s, int x, int y, bool flip = false);
 

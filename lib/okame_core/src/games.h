@@ -147,3 +147,32 @@ class Dance {
   int len_ = START, entered_ = 0, showIdx_ = -1, best_ = 0, echo_ = -1;
   uint32_t t0_ = 0, echoAt_ = 0;
 };
+
+// Left or Right? (the very first Tamagotchi's game): guess which way the bird will turn. Five rounds, three right to win.
+class LeftRight {
+ public:
+  enum class Phase : uint8_t { Ask, Turn, Done };
+  static constexpr int ROUNDS = 5, TO_WIN = 3;
+  static constexpr uint32_t TURN_MS = 1500, TIMEOUT_MS = 12000;
+
+  void start(uint32_t seed, uint32_t now);
+  void update(uint32_t now);
+  void input(bool right, uint32_t now);
+
+  Phase phase() const { return phase_; }
+  int round() const { return round_; }      // rounds guessed so far
+  int hits() const { return hits_; }
+  bool guess() const { return guess_; }     // true = right
+  bool turn() const { return turn_; }       // which way the bird turned
+  bool hit() const { return guess_ == turn_; }
+  bool won() const { return hits_ >= TO_WIN; }
+  bool timedOut() const { return timedOut_; }  // nobody guessed: end quietly, no win or loss
+  uint32_t phaseMs(uint32_t now) const { return now - t0_; }
+
+ private:
+  Rng rng_;
+  Phase phase_ = Phase::Done;
+  int round_ = 0, hits_ = 0;
+  bool guess_ = false, turn_ = false, timedOut_ = false;
+  uint32_t t0_ = 0;
+};

@@ -97,6 +97,17 @@ String gameJson() {
     return String("{\"type\":\"dance\",\"phase\":\"") + ph[int(d.phase())] + "\",\"length\":" + d.length() +
            ",\"entered\":" + d.entered() + ",\"best\":" + app::pet.extra().bestDance + "}";
   }
+  if (ui.screen() == Screen::LeftRight) {
+    const LeftRight& g = ui.leftRight();
+    const char* ph[] = {"ask", "turn", "done"};
+    String last = g.phase() == LeftRight::Phase::Turn
+                      ? String(",\"guess\":\"") + (g.guess() ? "right" : "left") + "\",\"turn\":\"" +
+                            (g.turn() ? "right" : "left") + "\",\"hit\":" + (g.hit() ? "true" : "false")
+                      : "";
+    return String("{\"type\":\"lr\",\"phase\":\"") + ph[int(g.phase())] + "\",\"round\":" + g.round() +
+           ",\"rounds\":" + LeftRight::ROUNDS + ",\"hits\":" + g.hits() + ",\"best\":" + app::pet.life().lrBest +
+           last + "}";
+  }
   if (ui.screen() == Screen::Peek) {
     const Peekaboo& p = ui.peek();
     const char* ph[] = {"hidden", "peeking", "hit", "miss", "done"};
@@ -181,6 +192,15 @@ String web::stateJson() {
   j += ",\"hat\":" + String(s.hat) + ",\"unlocked\":" + String(s.unlocked);
   j += ",\"giftReady\":" + String(app::pet.giftReady(now) ? "true" : "false");
   j += ",\"bestRain\":" + String(s.bestRain);
+  {
+    const PetLife& l = app::pet.life();
+    j += ",\"life\":{\"training\":" + String(l.training) + ",\"tricks\":" + String(l.tricks) +
+         ",\"fuss\":" + (app::pet.fussing(now) ? "true" : "false") + ",\"senior\":" + (l.senior ? "true" : "false") +
+         ",\"golden\":" + (l.golden ? "true" : "false") + ",\"party\":" + String(l.partyDays) +
+         ",\"lrBest\":" + String(l.lrBest) + ",\"clockOnCover\":" + (l.clockOnCover ? "true" : "false") +
+         ",\"alarm\":{\"h\":" + String(l.alarm.h) + ",\"m\":" + String(l.alarm.m) + ",\"days\":" +
+         String(l.alarm.days) + ",\"on\":" + (l.alarm.on ? "true" : "false") + "}}";
+  }
   j += ",\"frame\":\"" + String(frame) + "\"}";
   return j;
 }
@@ -284,6 +304,7 @@ void handleGame(AsyncWebServerRequest* r) {
   else if (g == "rain") game = Ui::Game::Rain;
   else if (g == "janken") game = Ui::Game::Janken;
   else if (g == "dance") game = Ui::Game::Dance;
+  else if (g == "lr") game = Ui::Game::LeftRight;
   else return sendJson(r, 400, "{\"error\":\"unknown game\"}");
   bool ok;
   {
@@ -377,6 +398,63 @@ void handleLove(AsyncWebServerRequest* r) {
   sendJson(r, 200, "{\"ok\":true}");
 }
 
+// A fuss on the screen: a calm "no" (training) or giving in with millet.
+void handleFuss(AsyncWebServerRequest* r) {
+  String a = param(r, "a");
+  int trick = -1;
+  {
+    app::Lock lock;
+    uint32_t now = app::epoch();
+    if (!app::pet.fussing(now)) return sendJson(r, 409, "{\"error\":\"not fussing\"}");
+    if (a == "spoil") {
+      Result res = app::pet.spoilFuss(now);
+      app::ui.remoteAction(Action::Millet, res, millis());
+    } else {
+      trick = app::pet.calmFuss(now);
+      app::ui.calmed(trick, millis());
+    }
+  }
+  app::requestSave();
+  sendJson(r, 200, String("{\"trick\":") + trick + "}");
+}
+
+void handleTrick(AsyncWebServerRequest* r) {
+  bool ok;
+  {
+    app::Lock lock;
+    ok = app::ui.showTrick(param(r, "t").length() ? param(r, "t").toInt() : -1, millis());
+  }
+  sendJson(r, ok ? 200 : 409, ok ? "{\"ok\":true}" : "{\"error\":\"not now\"}");
+}
+
+// show=1: the clock on the screen for a few seconds. cover=0/1: the time on the covered cage.
+void handleClock(AsyncWebServerRequest* r) {
+  bool ok = true;
+  {
+    app::Lock lock;
+    String c = param(r, "cover");
+    if (c.length()) app::pet.lifeMut().clockOnCover = c == "1";
+    if (param(r, "show") == "1") ok = app::ui.showClock(millis());
+  }
+  app::requestSave();
+  sendJson(r, ok ? 200 : 409, ok ? "{\"ok\":true}" : "{\"error\":\"not now\"}");
+}
+
+// The wake-up alarm. The dongle greets her if it's on; the relay sends the good morning to her phone.
+void handleAlarm(AsyncWebServerRequest* r) {
+  int h = param(r, "h").toInt(), m = param(r, "m").toInt(), days = param(r, "days").toInt();
+  bool on = param(r, "on") == "1";
+  if (h < 0 || h > 23 || m < 0 || m > 59 || days < 0 || days > 127) return sendJson(r, 400, "{\"error\":\"bad time\"}");
+  {
+    app::Lock lock;
+    app::pet.lifeMut().alarm = {uint8_t(h), uint8_t(m), uint8_t(days), uint8_t(on)};
+  }
+  app::requestSave();
+  cloud::event(String("{\"type\":\"alarm_set\",\"h\":") + h + ",\"m\":" + m + ",\"days\":" + days +
+               ",\"on\":" + (on ? "true" : "false") + "}");
+  sendJson(r, 200, "{\"ok\":true}");
+}
+
 void handleWear(AsyncWebServerRequest* r) {
   bool ok;
   {
@@ -447,6 +525,10 @@ void begin() {
   server.on("/api/omikuji", HTTP_POST, handleOmikuji);
   server.on("/api/say", HTTP_POST, handleSay);
   server.on("/api/focus", HTTP_POST, handleFocus);
+  server.on("/api/fuss", HTTP_POST, handleFuss);
+  server.on("/api/trick", HTTP_POST, handleTrick);
+  server.on("/api/clock", HTTP_POST, handleClock);
+  server.on("/api/alarm", HTTP_POST, handleAlarm);
   server.on("/api/settings", HTTP_GET, handleSettings);
   server.on("/api/scan", HTTP_GET, [](AsyncWebServerRequest* r) {
     if (!authorized(r)) return denied(r);
