@@ -545,7 +545,7 @@ async def pairing(chat, name, lang, text):
 
 async def telegram_loop():
     offset = kv_get("tg_offset", 0)
-    await tg("setMyCommands", commands=[
+    commands = [
         {"command": "status", "description": "How is Okame doing?"},
         {"command": "photo", "description": "A picture of Okame's screen"},
         {"command": "feed", "description": "Seed 🌻"}, {"command": "treat", "description": "Millet treat 🌾"},
@@ -561,7 +561,11 @@ async def telegram_loop():
         {"command": "hearts", "description": "Hearts on the screen 💛"}, {"command": "fireworks", "description": "Fireworks ✨"},
         {"command": "sakura", "description": "Falling sakura 🌸"}, {"command": "song", "description": "Okame composes a whistle 🎶"},
         {"command": "diary", "description": "Okame's diary 📔"}, {"command": "haiku", "description": "A haiku 🍃"},
-        {"command": "help", "description": "Everything Okame can do"}])
+        {"command": "help", "description": "Everything Okame can do"}]
+    await tg("setMyCommands", commands=commands)
+    for chat in CFG.get("partner_chats", []):  # Matthieu's menu also has the update button; Haruki's stays simple
+        await tg("setMyCommands", commands=commands + [{"command": "update", "description": "Install new firmware now 🪶"}],
+                 scope={"type": "chat", "chat_id": chat})
     await tg("setMyShortDescription", short_description="Okame オカメ, a pocket bird living on a little pixel screen 🐦💛")
     await tg("setMyDescription", description="ピヨ! I'm Okame, a tiny bird who lives on a little screen next to "
              "Haruki's laptop. Feed me, play with me and send notes that pop up on my screen. Press Start to become "
