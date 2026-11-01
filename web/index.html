@@ -410,7 +410,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
   <section class="card panel-care" id="outCard" hidden>
     <h2>Outings <span class="new">NEW</span> <span class="jp">おでかけ</span></h2>
     <div class="away" id="awayNote" hidden></div>
-    <p class="hint" id="outHint">Send Okame out for an hour or so in the daytime. Nothing needs doing while it's away, and it comes home with a souvenir and a postcard for Telegram 📮</p>
+    <p class="hint" id="outHint">Send your bird out for an hour or so in the daytime. Nothing needs doing while it's away, and it comes home with a souvenir and a postcard for Telegram 📮</p>
     <div class="places" id="places"></div>
   </section>
 
@@ -1193,6 +1193,7 @@ function showWorld(s) {
   $("toyPlay").hidden = !h.toy;
   // Outings.
   const out = h.away >= 0;
+  $("outHint").textContent = `Send ${s.name || "Okame"} out for an hour or so in the daytime. Nothing needs doing while it's away, and it comes home with a souvenir and a postcard for Telegram 📮`;
   $("awayNote").hidden = !out;
   if (out) $("awayNote").textContent = `🎒 ${s.name || "Okame"} is out ${PLACE_PHRASE[h.away]} · back in about ${h.backIn} min`;
   $("places").replaceChildren(...PLACES.map(([icon, en, jp, min], i) => {
@@ -1234,7 +1235,7 @@ $("partnerBtn").onclick = async () => {
     partnerArmed = Date.now();
     $("partnerBtn").textContent = "Tap again to find a partner";
     $("partnerWarn").hidden = false;
-    $("partnerWarn").textContent = `A partner comes to visit today. Tomorrow morning ${who} leaves an egg and moves into the family album (it still visits now and then). The new chick starts from the beginning. This can't be undone.`;
+    $("partnerWarn").textContent = `A partner comes to visit today. Tomorrow morning ${who} leaves an egg and moves into the family album (it still visits now and then). The new chick starts from the beginning; seeds, toys and bought accessories stay. This can't be undone.`;
     setTimeout(() => { $("partnerBtn").textContent = "💞 Find a partner…"; $("partnerWarn").hidden = true; }, 6000);
     return;
   }

@@ -127,11 +127,11 @@
 @ pl_mill_body
 ..###..
 .#ooo#.
-.#o#o#.
+.#ooo#.
+#ooooo#
 #ooooo#
 #oo#oo#
-#ooooo#
-#o###o#
+#o#o#o#
 #o#o#o#
 #######
 

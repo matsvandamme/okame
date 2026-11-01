@@ -66,6 +66,7 @@ class Ui {
   bool onceAnim() const { return screen_ == Screen::Anim && onceKind(anim_); }
   void love(uint32_t nowMs) {
     // Never over a once-only moment: hatching, the daily cross-off, the home-day party, a holiday greeting.
+    if (pet_.away(epoch_)) return;
     if (screen_ == Screen::Main || (screen_ == Screen::Anim && !onceKind(anim_))) startAnim(Anim::Love, nowMs);
   }
   // Days until Matthieu is home (0 = today), or -1 when no date is set or it has passed.

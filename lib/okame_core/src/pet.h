@@ -156,7 +156,10 @@ struct PetHome {
   int32_t partnerDay;             // the local day it came
   uint8_t inherit;                // the parent's look for the next adult: Variant + 1, +8 if it was golden
   uint8_t familyCount;
-  struct Member { char name[13]; uint8_t species, variant, golden, generation; uint16_t days; } family[FAMILY_MAX];
+  struct Member { char name[17]; uint8_t species, variant, golden, generation; uint16_t days; } family[FAMILY_MAX];
+  uint16_t hats;                  // accessories bought in the shop: every bird of the family keeps them
+  int32_t playDay;                // day that playPoints counts
+  uint8_t playPoints;             // seeds won at games today (capped)
 };
 
 class Pet {
@@ -246,7 +249,8 @@ class Pet {
 
   // 0.7 additions (see PetHome).
   static constexpr uint16_t HOME_VERSION = 1;
-  static constexpr uint8_t CARE_POINTS_PER_DAY = 10;
+  static constexpr uint8_t CARE_POINTS_PER_DAY = 10, PLAY_POINTS_PER_DAY = 30;
+  void setToday(int32_t day) { today_ = day; }  // the local calendar day, from the platform (0 = unknown)
   static constexpr uint32_t TOY_COOLDOWN = rules::HOUR;
   const PetHome& home() const { return h_; }
   PetHome& homeMut() { return h_; }
@@ -269,7 +273,7 @@ class Pet {
   // family album. The new egg is the same kind, and may take after its parent.
   bool canFindPartner(uint32_t now) const;
   bool findPartner(uint32_t now, int32_t today);
-  bool eggDue(int32_t today) const { return h_.partnerAt && today > h_.partnerDay; }
+  bool eggDue(int32_t today) const { return h_.partnerAt && s_.stage == Stage::Adult && today > h_.partnerDay; }
   void nextGeneration(uint32_t now);
 
  private:
@@ -285,5 +289,7 @@ class Pet {
   PetBirds b_{BIRDS_VERSION, 0, 0, {}, 0, 0, 0};
   PetLife l_{LIFE_VERSION};
   PetHome h_{HOME_VERSION};
+  int32_t today_ = 0;
+  int32_t dayOf(uint32_t now) const { return today_ ? today_ : (int32_t)(now / rules::DAY); }
   HourFn hour_;
 };

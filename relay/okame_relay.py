@@ -454,6 +454,8 @@ async def handle(msg):
     if cmd == "/update":
         return await update_cmd(chat)
     if cmd == "/seeds":
+        if chat not in {p["chat_id"] for p in partners()}:
+            return await say(chat, "Seeds come from the ship 🚢 (that's Matthieu's button). You earn yours by playing with me! 🌻")
         return await seeds_cmd(chat, arg)
     if cmd == "/trick":
         if not egg_has(V06):
@@ -1274,14 +1276,14 @@ async def whats_new():
         kv_set("whats_new_0.5", time.time())
         for u in users():
             await say(u["chat_id"], WHATS_NEW_05)
-    if egg_has(V07) and not kv_get("whats_new_0.7"):
-        kv_set("whats_new_0.7", time.time())
-        for u in users():
-            await say(u["chat_id"], WHATS_NEW_07 + ("\n\nSend seeds from the ship with /seeds 10 🌻" if u["chat_id"] in ids else ""))
     if egg_has(V06) and not kv_get("whats_new_0.6"):
         kv_set("whats_new_0.6", time.time())
         for u in users():
             await say(u["chat_id"], WHATS_NEW_06_MATTHIEU if u["chat_id"] in ids else WHATS_NEW_06_HARUKI)
+    if egg_has(V07) and not kv_get("whats_new_0.7"):
+        kv_set("whats_new_0.7", time.time())
+        for u in users():
+            await say(u["chat_id"], WHATS_NEW_07 + ("\n\nSend seeds from the ship with /seeds 10 🌻" if u["chat_id"] in ids else ""))
 
 
 CONNECT_HOOKS = [send_home, resend_words, send_dates, weather_now, send_rival, whats_new]

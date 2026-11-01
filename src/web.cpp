@@ -310,6 +310,7 @@ void handlePractice(AsyncWebServerRequest* r) {
   uint8_t level;
   {
     app::Lock lock;
+    if (app::pet.away(app::epoch())) return sendJson(r, 409, "{\"error\":\"out\"}");
     learned = app::pet.practiceTune(app::epoch());
     level = app::pet.state().tuneLevel;
     if (learned) app::ui.whistle(millis());
@@ -353,6 +354,7 @@ void handleGift(AsyncWebServerRequest* r) {
   int got;
   {
     app::Lock lock;
+    if (app::pet.away(app::epoch())) return sendJson(r, 409, "{\"error\":\"out\"}");
     got = app::pet.openGift(app::epoch(), esp_random());
     if (got > 0) app::pet.wear(got);  // put it on straight away
     if (got >= -1) app::ui.showGift(got, millis());
@@ -370,7 +372,8 @@ void handleOmikuji(AsyncWebServerRequest* r) {
     Date d = app::today();
     Screen s = app::ui.screen();
     if (!d.y) return sendJson(r, 409, "{\"error\":\"no clock yet\"}");
-    if ((s != Screen::Main && s != Screen::Anim) || app::ui.onceAnim()) return sendJson(r, 409, "{\"error\":\"not now\"}");
+    if (!app::ui.canReact()) return sendJson(r, 409, "{\"error\":\"not now\"}");
+    (void)s;
     g = app::pet.drawOmikuji(civil(d), esp_random());
     if (g >= 0) app::ui.showOmikuji(g, millis());
   }
@@ -385,7 +388,7 @@ void handleSay(AsyncWebServerRequest* r) {
   String t = param(r, "w");
   {
     app::Lock lock;
-    if (app::ui.screen() != Screen::Main) return sendJson(r, 409, "{\"error\":\"not now\"}");
+    if (app::ui.screen() != Screen::Main || !app::ui.canReact()) return sendJson(r, 409, "{\"error\":\"not now\"}");
     for (const auto& wd : app::pet.extra().words)
       if (wd.text[0] && t == wd.text) {
         app::ui.say(wd.text, app::epoch() < wd.at + rules::DAY, millis());
@@ -493,7 +496,7 @@ void handleBuy(AsyncWebServerRequest* r) {
       res = app::pet.buyHat(n);
       if (!res) {
         app::pet.wear(n);
-        app::ui.showGift(n, millis());
+        if (app::ui.canReact()) app::ui.showGift(n, millis());
       }
     } else {
       res = -3;

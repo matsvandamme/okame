@@ -914,6 +914,20 @@ void test_partner_then_an_egg_the_next_morning() {
   TEST_ASSERT_EQUAL_STRING("MANON", p.home().family[0].name);
 }
 
+
+void test_a_restarted_egg_cancels_the_partner_and_keeps_bought_hats() {
+  Pet p = adultAged(21);
+  p.earn(100);
+  TEST_ASSERT_EQUAL(0, p.buyHat(HAT_BOW));
+  TEST_ASSERT_TRUE(p.findPartner(T0, 100));
+  p.reset(T0 + HOUR);  // a new egg before the morning
+  TEST_ASSERT_EQUAL(0, p.home().partnerAt);
+  TEST_ASSERT_FALSE(p.eggDue(200));
+  TEST_ASSERT_TRUE(p.state().unlocked & (1 << HAT_BOW));  // bought: the family keeps it
+  for (int i = 0; i < 20; i++) p.recordGame(true, 0);
+  TEST_ASSERT_EQUAL(100 - HAT_PRICE + Pet::PLAY_POINTS_PER_DAY, (int)p.home().points);  // games pay 30 a day at most
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_egg_hatches_after_two_minutes);
@@ -971,5 +985,6 @@ int main() {
   RUN_TEST(test_a_new_generation_keeps_the_family_and_the_home);
   RUN_TEST(test_outing_on_screen_sends_one_postcard);
   RUN_TEST(test_partner_then_an_egg_the_next_morning);
+  RUN_TEST(test_a_restarted_egg_cancels_the_partner_and_keeps_bought_hats);
   return UNITY_END();
 }

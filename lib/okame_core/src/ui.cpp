@@ -168,6 +168,7 @@ void Ui::startAnim(Anim a, uint32_t nowMs) {
 }
 
 void Ui::remoteAction(Action a, Result r, uint32_t nowMs) {
+  if (r == Result::Away) return;  // nobody home: the cage just shows "OUT"
   if (r == Result::Refused) return startAnim(Anim::Refused, nowMs);
   if (r == Result::NotNeeded) return startAnim(Anim::NotNeeded, nowMs);
   if (r == Result::Sleeping) return startAnim(Anim::Sleeping, nowMs);
@@ -215,7 +216,7 @@ void Ui::update(const Env& env) {
   if (lastStage_ == Stage::Egg && s.stage == Stage::Chick) startAnim(Anim::Hatch, now);
   lastStage_ = s.stage;
   if (env.online && !lastOnline_ && s.stage != Stage::Egg && s.stage != Stage::Gone && screen_ != Screen::Focus &&
-      !inGame())
+      !inGame() && !pet_.away(env.epoch))
     startAnim(Anim::Greet, now);
   lastOnline_ = env.online;
 
@@ -223,7 +224,8 @@ void Ui::update(const Env& env) {
   Screen forced = baseScreen(env);
   // A Wi-Fi blip doesn't end a focus session or a game: they run on the dongle's own clock.
   bool ride = forced == Screen::Sleep &&
-              (screen_ == Screen::Focus || inGame() || (screen_ == Screen::Anim && anim_ == Anim::FocusDone));
+              (screen_ == Screen::Focus || inGame() ||
+               (screen_ == Screen::Anim && (anim_ == Anim::FocusDone || anim_ == Anim::Home)));
   if (!ride && (forced == Screen::Ota || forced == Screen::Pair || forced == Screen::Gone ||
                 forced == Screen::Setup || forced == Screen::Sleep)) {
     if (screen_ != forced && !(screen_ == Screen::Anim && anim_ == Anim::Hatch)) {
@@ -1776,7 +1778,7 @@ void Ui::maybeLife(const Env& env) {
     l.familyAt = env.epoch;
     family_ = rng_.range(0, h.familyCount - 1);
     fromX_ = birdX_;
-    birdX_ = 1;
+    birdX_ = h.toy ? toyW() + 1 : 1;
     facingLeft_ = false;
     dirty_ = true;
     startAnim(Anim::Family, now);
@@ -1794,6 +1796,10 @@ void Ui::checkAlarm(const Env& env) {
   if (late < 0 || late >= 10 || l.alarmDay == day || !((a.days >> weekday(env.today)) & 1)) return;
   const PetState& s = pet_.state();
   if (s.stage == Stage::Egg || s.stage == Stage::Gone) return;
+  if (pet_.away(env.epoch)) {  // out: only the good morning on her phone (the relay sends it)
+    l.alarmDay = day;
+    return;
+  }
   bool free = screen_ == Screen::Main || screen_ == Screen::Lights || screen_ == Screen::Say || screen_ == Screen::Clock ||
               (screen_ == Screen::Anim && !onceKind(anim_));
   if (!free) return;
@@ -2046,7 +2052,7 @@ bool Ui::playWithToy(uint32_t nowMs) {
 
 bool Ui::partnerVisit(uint32_t nowMs) {
   fromX_ = birdX_;
-  birdX_ = 1;
+  birdX_ = pet_.home().toy ? toyW() + 1 : 1;
   facingLeft_ = false;
   startAnim(Anim::Partner, nowMs);
   return true;
@@ -2061,14 +2067,15 @@ void Ui::drawAway(const Env& env) {
   uint32_t back = pet_.life().outing.back, now = env.epoch;
   int mins = back > now ? (int)((back - now + 59) / 60) : 0;
   char buf[12];
-  snprintf(buf, sizeof buf, "%dM", mins);
+  snprintf(buf, sizeof buf, "%d", mins);
   frame_.text(buf, x0, 9);
+  frame_.text("MIN", x0, 15);
   const Sprite* icon[] = {&spr::pl_tree, &spr::pl_cup, &spr::umbrella, &spr::pl_torii, &spr::pl_mill_body, &spr::pl_frites};
   if (p >= 0 && p < PLACE_COUNT) {
     const Sprite& s = *icon[p];
     frame_.sprite(s, LCD_W - s.w - 1, LCD_H - s.h);
     if (p == PLACE_WINDMILL)
-      frame_.sprite((env.nowMs / 500) % 2 ? spr::pl_mill_x : spr::pl_mill_plus, LCD_W - s.w - 3, LCD_H - s.h - 5);
+      frame_.sprite(spr::pl_mill_x, LCD_W - s.w - 3, LCD_H - s.h - 5);
   }
 }
 
@@ -2127,7 +2134,7 @@ void Ui::drawWorldAnim(const Env& env, uint32_t el) {
     case Anim::Home:  // the postcard from where it went, then "I'm home!" with a souvenir
       if (el < 3000) {
         drawPlace(place_, el);
-        if (el >= 1200 && !postcardTaken_) {  // this frame goes to Telegram as a postcard
+        if (!postcardTaken_) {  // this frame goes to Telegram as a postcard
           postcardTaken_ = true;
           postcardOut_ = place_ + 1;
         }
@@ -2196,7 +2203,7 @@ void Ui::drawWorldAnim(const Env& env, uint32_t el) {
       const Sprite& p = *lookOf(pet_.species()).stage[2][0];
       int px = LCD_W - p.w - 1;
       if (el < 1500) px += (int)(1500 - el) / 40;
-      drawBird(el > 1500 && alt ? Pose::Happy : Pose::Up, 1, LCD_H, false);
+      drawBird(el > 1500 && alt ? Pose::Happy : Pose::Up, birdX_, LCD_H, false);
       drawAs(sp, Variant::Grey, false, el > 1500 && !alt ? Pose::Happy : Pose::Idle, px, LCD_H, true);
       if (el > 1800) frame_.sprite(spr::heart, (LCD_W - 7) / 2, 1 + (int)((el / 250) % 3));
       return;

@@ -65,11 +65,11 @@ void backlight(uint8_t level) { ledcWrite(PIN_LCD_BL, level); }
 
 void save() {
   app::Lock lock;
+  storage::saveHome(app::pet.home());  // first: a power cut mid-save must never leave a partner waiting for a new egg
   storage::savePet(app::pet.state());
   storage::saveExtra(app::pet.extra());
   storage::saveBirds(app::pet.birds());
   storage::saveLife(app::pet.life());
-  storage::saveHome(app::pet.home());
   if (clockTrusted()) storage::setLastEpoch(app::epoch());
   lastSave = millis();
   saveWanted = false;
@@ -253,6 +253,7 @@ void loop() {
     env.today = app::today();
     env.hour = env.today.y ? localHour(ep) : -1;
     env.minute = env.today.y ? localMinute(ep) : -1;
+    app::pet.setToday(env.today.y ? civil(env.today) : 0);
     if (net::takeVisitor() && app::ui.screen() == Screen::Main) app::ui.visitor(now);
     app::ui.update(env);
 
@@ -275,7 +276,7 @@ void loop() {
     // A learned tune gets whistled now and then while the bird is awake and content.
     const PetState& s = app::pet.state();
     if (s.tuneLevel >= rules::TUNE_LEARNED && app::ui.screen() == Screen::Main &&
-        app::pet.mood(ep) == Mood::Content) {
+        app::pet.mood(ep) == Mood::Content && !app::pet.away(ep)) {
       if (!nextWhistle) nextWhistle = now + 20 * 60 * 1000 + esp_random() % (40 * 60 * 1000);
       if (now >= nextWhistle) {
         nextWhistle = 0;

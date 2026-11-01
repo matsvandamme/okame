@@ -273,6 +273,8 @@ async def t_world():
     await r.handle(msg(MATTHIEU, "/seeds 15"))
     await r.handle(msg(MATTHIEU, "/seeds 15"))
     await r.handle(msg(MATTHIEU, "/seeds 5"))
+    await r.handle(msg(HARUKI, "/seeds 10"))
+    check("only Matthieu sends seeds", "ship" in said(HARUKI)[-1])
     check("seeds are capped at 20 a day", [q["n"] for q in queued("seeds")] == [15, 5] and "enough" in said(MATTHIEU)[-1])
     check("the status shows seeds and the outing", "46 seeds" in r.status_caption() and "beach" in r.status_caption())
     sent.clear()

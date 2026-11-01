@@ -28,6 +28,10 @@ void Pet::reset(uint32_t now) {
   l_.clockOnCover = keepLife.clockOnCover;
   l_.alarmDay = keepLife.alarmDay;
   l_.eggStart = now;
+  // A partner who came for the bird before this egg doesn't count for the new one. Bought accessories stay.
+  h_.partnerAt = 0;
+  h_.partnerDay = 0;
+  s_.unlocked = h_.hats;
 }
 
 bool Pet::load(const PetState& st) {
@@ -178,7 +182,7 @@ Result Pet::act(Action a, uint32_t now) {
   if (away(now)) return Result::Away;
   Result r = doAct(a, now);
   if (r == Result::Ok && a != Action::Light && a != Action::GameWin && a != Action::GameLose) {
-    int32_t day = (int32_t)(now / DAY);  // a seed for each bit of care, ten a day
+    int32_t day = dayOf(now);  // a seed for each bit of care, ten a day
     if (h_.careDay != day) {
       h_.careDay = day;
       h_.carePoints = 0;
@@ -318,7 +322,16 @@ int Pet::openGift(uint32_t now, uint32_t rnd) {
 }
 
 void Pet::recordGame(bool won, int rainScore) {
-  earn(won ? 5 : 1);
+  int32_t day = dayOf(s_.lastTick);  // seeds from games: up to 30 a day
+  if (h_.playDay != day) {
+    h_.playDay = day;
+    h_.playPoints = 0;
+  }
+  uint8_t win = won ? 5 : 1;
+  if (h_.playPoints + win <= PLAY_POINTS_PER_DAY) {
+    h_.playPoints += win;
+    earn(win);
+  }
   if (won) s_.gamesWon++;
   if (rainScore > s_.bestRain) s_.bestRain = rainScore;
   if (s_.gamesWon >= 3) unlock(HAT_CROWN);
@@ -540,11 +553,12 @@ void Pet::loadHome(const PetHome& h) {
   if (h_.familyCount > FAMILY_MAX) h_.familyCount = FAMILY_MAX;
   for (auto& m : h_.family) m.name[sizeof m.name - 1] = 0;
   h_.toys &= (1 << TOY_COUNT) - 1;
+  s_.unlocked |= h_.hats;
   if (h_.toy > TOY_COUNT || (h_.toy && !(h_.toys & (1 << (h_.toy - 1))))) h_.toy = 0;
 }
 
 int Pet::buyTreat(uint32_t now) {
-  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone || s_.lightsOff || away(now)) return -3;
+  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone || s_.lightsOff || asleep(now) || away(now)) return -3;
   if (h_.points < TREAT_PRICE) return -1;
   h_.points -= TREAT_PRICE;
   s_.happy = inc(s_.happy, MAX_STAT);
@@ -567,6 +581,7 @@ int Pet::buyHat(uint8_t hat) {
   if (s_.unlocked & (1u << hat)) return -2;
   if (h_.points < HAT_PRICE) return -1;
   h_.points -= HAT_PRICE;
+  h_.hats |= 1u << hat;
   unlock(hat);
   return 0;
 }
@@ -627,7 +642,5 @@ void Pet::nextGeneration(uint32_t now) {
   m.days = days > 0xffff ? 0xffff : days;
   h_.inherit = uint8_t(uint8_t(s_.variant) + 1) | (l_.golden ? 8 : 0);
   h_.generation++;
-  h_.partnerAt = 0;
-  h_.partnerDay = 0;
   reset(now);
 }
