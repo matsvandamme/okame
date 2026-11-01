@@ -126,21 +126,17 @@ void Ui::drawBird(Pose pose, int x, int y, bool flip) {
   // Bottom-align so feet stay on the floor whatever the sprite height.
   frame_.sprite(*sp, x, y - sp->h, flip, pat);
   drawHat(pose, x, y, flip);
-  drawGlasses(pose, x, y, flip);
+  drawCane(pose, x, y, flip);
 }
 
-// A senior's reading glasses sit where the sunglasses go: over the eye, the arm reaching back. The owl, seen from
-// the front, has big round eyes that glasses would only hide: it looks wise enough already.
-void Ui::drawGlasses(Pose pose, int x, int y, bool flip) {
-  const PetState& s = pet_.state();
-  if (!pet_.senior() || s.stage != Stage::Adult || s.hat == HAT_CROWN || pose == Pose::Peck) return;
-  if (!lookOf(pet_.species()).sideways) return;
-  int sp = uint8_t(pet_.species());
-  const Sprite* body = lookOf(pet_.species()).stage[2][0];
-  const Sprite& g = spr::glasses;
-  int ax = OFF[sp][2][HAT_CROWN][0], ay = OFF[sp][2][HAT_CROWN][1];  // the lens rings the eye; its middle stays clear
-  if (flip) ax = body->w - ax - g.w;
-  frame_.sprite(g, x + ax, y - body->h + ay, flip);
+// A wise old bird leans on a little walking stick, just in front of it.
+void Ui::drawCane(Pose pose, int x, int y, bool flip) {
+  if (!pet_.senior() || pet_.state().stage != Stage::Adult) return;
+  const Sprite& c = spr::cane;  // drawn with its hook towards the bird, a dot clear of the body
+  int w = birdW();
+  int cx = flip ? x - c.w - 1 : x + w + 1;
+  if (!lookOf(pet_.species()).sideways) cx = x + w;  // the owl holds it at its side
+  frame_.sprite(c, cx, y - c.h, !flip);
 }
 
 // Accessories sit on fixed spots of each life stage's sprite (facing right): bow tie, scarf and medal at the neck,
@@ -208,13 +204,8 @@ void Ui::update(const Env& env) {
     nextSay_ = now + 5 * 60 * 1000;
     nextFriend_ = now + rng_.range(20, 40) * 60 * 1000;
     nextTrick_ = now + rng_.range(30, 60) * 60 * 1000;
-    lastSenior_ = pet_.senior();
-    lastGolden_ = pet_.golden();
   }
-  if (pet_.senior() && !lastSenior_) seniorDue_ = true;
-  if (pet_.golden() && !lastGolden_) goldenDue_ = true;
-  lastSenior_ = pet_.senior();
-  lastGolden_ = pet_.golden();
+  epoch_ = env.epoch;
 
   handleButton(env);
 
@@ -865,10 +856,11 @@ void Ui::drawMain(const Env& env) {
   if (fuss) {
     int hx = headX(birdX_, facingLeft_);
     bool side = lookOf(pet_.species()).sideways;
-    int fx = side ? (facingLeft_ ? hx - 6 : hx + 7) : hx + 8;
-    frame_.sprite(spr::fuss, fx, y - birdH() < 0 ? 0 : y - birdH());
+    int fx = side ? (facingLeft_ ? hx - 6 : hx + 7) : birdX_ + birdW() + 1;
+    int fy = side ? y - birdH() : y - birdH() + 3;
+    frame_.sprite(spr::fuss, fx, fy < 0 ? 0 : fy);
   }
-  if (pet_.golden() && s.stage == Stage::Adult && (now / 900) % 5 == 0)  // a golden glint now and then
+  if (pet_.golden() && s.stage == Stage::Adult && (now / 900) % 3 == 0)  // a golden glint now and then
     frame_.sprite(spr::sparkle, facingLeft_ ? birdX_ + birdW() : birdX_ - 5, y - birdH() + 1);
 
   // Status icons in the top-left corner.
@@ -1318,13 +1310,9 @@ void Ui::drawLights(const Env& env) {
   frame_.fill();
   int phase = (env.nowMs / 600) % 3;
   if (pet_.life().clockOnCover && env.hour >= 0) {  // a little clock tag on the cover, zz drifting underneath
-    frame_.fillRect(1, 1, LCD_W - 2, 12, false);
-    frame_.set(1, 1, true);
-    frame_.set(LCD_W - 2, 1, true);
-    frame_.set(1, 12, true);
-    frame_.set(LCD_W - 2, 12, true);
+    frame_.fillRect(0, 0, LCD_W, 13, false);
     drawTime(env, 2, true);
-    frame_.spriteInverse(spr::zz, 17 + phase * 3, 17 - phase);
+    frame_.spriteInverse(spr::zz, 17 + phase * 3, 14);
     return;
   }
   frame_.spriteInverse(spr::zz, 18 + phase * 3, 8 - phase * 2);
@@ -1705,10 +1693,14 @@ void Ui::maybeLife(const Env& env) {
   const PetState& s = pet_.state();
   if (screen_ != Screen::Main || s.stage == Stage::Egg || s.stage == Stage::Gone || pet_.asleep(env.epoch)) return;
   uint32_t now = env.nowMs;
-  if (goldenDue_ || seniorDue_) {
-    milestoneOut_ = goldenDue_ ? 2 : 1;
-    startAnim(goldenDue_ ? Anim::Golden : Anim::Senior, now);
-    goldenDue_ = seniorDue_ = false;
+  PetLife& l = pet_.lifeMut();
+  if ((l.golden && !l.goldenShown) || (l.senior && !l.seniorShown)) {  // saved, so a reboot can't lose the moment
+    bool gold = l.golden && !l.goldenShown;
+    milestoneOut_ = gold ? 2 : 1;
+    l.seniorShown = 1;
+    if (gold) l.goldenShown = 1;
+    dirty_ = true;
+    startAnim(gold ? Anim::Golden : Anim::Senior, now);
     return;
   }
   if (uint16_t d = pet_.partyDue(env.epoch)) {
@@ -1730,18 +1722,22 @@ void Ui::maybeLife(const Env& env) {
 }
 
 // The alarm Haruki set on the page: the bird pops up with a good morning (the relay also sends it to her phone).
+// If the bird is busy right then (a game, a note), it greets as soon as it's free, within ten minutes.
 void Ui::checkAlarm(const Env& env) {
-  const PetLife::Alarm& a = pet_.life().alarm;
-  if (!a.on || !env.today.y || env.hour != a.h || env.minute != a.m) return;
+  PetLife& l = pet_.lifeMut();
+  const PetLife::Alarm& a = l.alarm;
+  if (!a.on || !env.today.y || env.hour < 0 || env.minute < 0) return;
+  int late = (env.hour * 60 + env.minute) - (a.h * 60 + a.m);
   int32_t day = civil(env.today);
-  if (alarmDay_ == day || !((a.days >> weekday(env.today)) & 1)) return;
-  alarmDay_ = day;
+  if (late < 0 || late >= 10 || l.alarmDay == day || !((a.days >> weekday(env.today)) & 1)) return;
   const PetState& s = pet_.state();
-  if (s.stage == Stage::Egg || s.stage == Stage::Gone || inGame() || screen_ == Screen::Focus || busyShowing()) return;
-  if (screen_ == Screen::Main || screen_ == Screen::Lights || screen_ == Screen::Anim || screen_ == Screen::Say ||
-      screen_ == Screen::Clock) {
-    startAnim(Anim::Wake, env.nowMs);
-  }
+  if (s.stage == Stage::Egg || s.stage == Stage::Gone) return;
+  bool free = screen_ == Screen::Main || screen_ == Screen::Lights || screen_ == Screen::Say || screen_ == Screen::Clock ||
+              (screen_ == Screen::Anim && !onceKind(anim_));
+  if (!free) return;
+  l.alarmDay = day;
+  dirty_ = true;
+  startAnim(Anim::Wake, env.nowMs);
 }
 
 void Ui::calmed(int newTrick, uint32_t nowMs) {
@@ -1752,8 +1748,8 @@ void Ui::calmed(int newTrick, uint32_t nowMs) {
 
 bool Ui::showTrick(int trick, uint32_t nowMs) {
   const PetState& s = pet_.state();
-  if (s.stage == Stage::Egg || s.stage == Stage::Gone || s.lightsOff) return false;
-  if (screen_ != Screen::Main && !(screen_ == Screen::Anim && !onceKind(anim_))) return false;
+  if (s.stage == Stage::Egg || s.stage == Stage::Gone || s.lightsOff || pet_.asleep(epoch_)) return false;
+  if (!canReact()) return false;
   if (trick < 0) trick = pet_.pickTrick(rng_.next());
   if (trick < 0 || trick >= TRICK_COUNT || !((pet_.life().tricks >> trick) & 1)) return false;
   trick_ = trick;
@@ -1763,7 +1759,7 @@ bool Ui::showTrick(int trick, uint32_t nowMs) {
 }
 
 bool Ui::showClock(uint32_t nowMs) {
-  if (screen_ != Screen::Main && screen_ != Screen::Clock && !(screen_ == Screen::Anim && !onceKind(anim_))) return false;
+  if (screen_ != Screen::Clock && !canReact()) return false;
   screen_ = Screen::Clock;
   t0_ = nowMs;
   return true;
@@ -1779,7 +1775,7 @@ void Ui::drawTrick(uint32_t el) {
       const Sprite& w = alt ? spr::fr_wing_up : spr::fr_wing_dn;
       int wy = LCD_H - birdH() + birdH() / 3 - (alt ? w.h - 1 : 0);
       if (front) frame_.sprite(w, cx + birdW() - 1, wy, true);
-      else frame_.sprite(w, cx + birdW() / 2 - 2, wy, false);
+      else frame_.sprite(w, cx + 2, wy, false);
       break;
     }
     case TRICK_SPIN: {  // round and round, hopping
@@ -1854,7 +1850,7 @@ void Ui::drawLifeAnim(const Env& env, uint32_t el) {
         frame_.sprite(spr::confetti, x, y, (el / 400 + i) % 2);
       }
       return;
-    case Anim::Senior:  // a wise old bird now, with reading glasses
+    case Anim::Senior:  // a wise old bird now, with its walking stick
       if (el < 2400) {
         frame_.textCentered("WISE", 1, 2);
         frame_.textCentered("OLD BIRD", 13);
@@ -1872,7 +1868,7 @@ void Ui::drawLifeAnim(const Env& env, uint32_t el) {
       if (el < 3800) {
         frame_.textCentered("GOLDEN", 1, 1);
         frame_.textCentered("BIRD!", 8, 2);
-        frame_.sprite(spr::sparkle, alt ? 1 : LCD_W - 6, alt ? 1 : 12);
+        frame_.sprite(spr::sparkle, alt ? 1 : LCD_W - 6, 1);
         return;
       }
       drawBird(Pose::Happy, cx, LCD_H - (alt ? 1 : 0), false);
@@ -1920,7 +1916,7 @@ void Ui::drawLeftRight(const Env& env) {
     frame_.sprite(spr::arr_l, 1, 8);
     frame_.sprite(spr::arr_r, LCD_W - 4, 8);
   }
-  if (!blink(now, 500)) frame_.sprite(spr::question, cx + birdW() / 2 - 1, LCD_H - birdH() - 6 < 0 ? 0 : LCD_H - birdH() - 6);
+  if (!blink(now, 500)) frame_.sprite(spr::question, shift ? cx - 5 : cx + birdW() + 1, 2);
 }
 
 void Ui::drawTime(const Env& env, int y, bool on) {

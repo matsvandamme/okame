@@ -126,6 +126,9 @@ struct PetLife {
   uint8_t lrBest;
   uint8_t clockOnCover;           // show the time on the covered cage
   struct Alarm { uint8_t h, m, days, on; } alarm;  // days: bit 0 = Monday
+  uint8_t seniorShown, goldenShown;  // the reveal played (it waits for an awake bird on its main screen)
+  int32_t alarmDay;               // civil day the alarm last greeted, so a reboot in that minute doesn't repeat it
+  uint32_t eggStart;              // the egg this belongs to; another egg (say, after a rollback) starts fresh
 };
 
 class Pet {
@@ -191,7 +194,11 @@ class Pet {
   void loadLife(const PetLife& l);
   // Now and then a well-cared-for bird fusses for attention (わがまま). Starts one if it's time; true when it did.
   bool maybeFuss(uint32_t now, int32_t today, uint32_t rnd);
-  bool fussing(uint32_t now) const { return l_.fussAt && now - l_.fussAt < FUSS_LASTS && !asleep(now) && !s_.lightsOff; }
+  // A fuss shows only while every need is still met; a hungry or sad bird has a real reason.
+  bool fussing(uint32_t now) const {
+    return l_.fussAt && now - l_.fussAt < FUSS_LASTS && !asleep(now) && !s_.lightsOff && !s_.sick && s_.hunger >= 2 &&
+           s_.happy >= 2 && s_.poop < 2;
+  }
   // A calm "no": training goes up. Returns the trick just learned, or -1 (no fuss, or nothing new).
   int calmFuss(uint32_t now);
   // Giving in: millet makes it happy, but it learns nothing.

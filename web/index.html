@@ -379,7 +379,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="row"><input type="time" id="alarmTime" value="07:30"><label class="row" style="flex:0 0 auto;font-weight:800">On <input type="checkbox" id="alarmOn" style="flex:0 0 auto;width:22px;height:22px"></label></div>
     <div class="days" id="alarmDays" style="margin-top:8px"></div>
     <button class="btn dark wide" id="alarmSave" style="margin-top:10px">Save alarm</button>
-    <p class="hint" id="alarmHint" style="margin-top:8px">At that time Okame says good morning on its screen, and sends you a good-morning message on Telegram (so it works even when the laptop is closed).</p>
+    <p class="hint" id="alarmHint" style="margin-top:8px">At that time Okame sends you a good-morning message on Telegram, so it works even when the laptop is closed. If the laptop is open, Okame also pops up on its screen (from under the cover too, before it goes back to sleep until you uncover it).</p>
   </section>
 
   <section class="card panel-care" id="friendsCard">
@@ -881,7 +881,7 @@ function showGame(g) {
   if (!g) return;
   if (frameHex) drawLcd($("lcdMini").getContext("2d"), frameHex);
   if (starting && !$("tab-care").hidden) requestAnimationFrame(() => $("playCard").scrollIntoView({ behavior: "smooth", block: "end" }));
-  const score = g.type === "lr" ? `Round ${Math.min(g.round + (g.phase === "ask" ? 1 : 0), g.rounds)}/${g.rounds} · right ${g.hits}` + (g.phase === "turn" ? `  It went ${g.turn}! ${g.hit ? "You got it ♥" : "Missed!"}` : "")
+  const score = g.type === "lr" ? `· Round ${Math.min(g.round + (g.phase === "ask" ? 1 : 0), g.rounds)}/${g.rounds} · ${"♥".repeat(g.hits) || "no ♥ yet"}` + (g.phase === "turn" ? ` · It went ${g.turn}! ${g.hit ? "You got it!" : "Missed!"}` : "")
     : g.type === "janken" ? `You ${g.wins} · Okame ${g.losses}` + (g.phase === "reveal" ? `  ${HAND_EMOJI[g.you]} vs ${HAND_EMOJI[g.bird]} ${g.result > 0 ? "You win!" : g.result < 0 ? "Okame wins!" : "Aiko! Again!"}` : "")
     : g.type === "dance" ? `${g.length} moves · best ${g.best}` + (g.phase === "listening" ? "  " + "●".repeat(g.entered) + "○".repeat(Math.max(0, g.length - g.entered)) : "")
     : g.type === "rain" ? `Score ${g.score} · ${"♥".repeat(g.lives)} · best ${g.best}`
@@ -1008,18 +1008,19 @@ let alarmDays = 0x1f, alarmDirty = false;
 DAYNAMES.forEach((d, i) => {
   const b = document.createElement("button");
   b.className = "btn"; b.textContent = d; b.setAttribute("aria-label", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][i]);
-  b.onclick = () => { alarmDays ^= 1 << i; alarmDirty = true; showDays(); };
+  b.onclick = () => { alarmDays ^= 1 << i; alarmDirty = true; $("alarmOn").checked = true; showDays(); };
   $("alarmDays").append(b);
 });
 function showDays() { [...$("alarmDays").children].forEach((b, i) => b.setAttribute("aria-pressed", !!(alarmDays & (1 << i)))); }
-["alarmTime", "alarmOn"].forEach((id) => $(id).addEventListener("input", () => { alarmDirty = true; }));
+$("alarmTime").addEventListener("input", () => { alarmDirty = true; $("alarmOn").checked = true; });  // picking a time means "on"
+$("alarmOn").addEventListener("input", () => { alarmDirty = true; });
 let fussWas = false;
 function showLife(s) {
   const l = s.life;
   const alive = s.stage !== "egg" && s.stage !== "gone";
   $("trainCard").hidden = !l || !alive;
   $("clockCard").hidden = !l;
-  $("fussCard").hidden = !(l && l.fuss);
+  $("fussCard").hidden = !(l && l.fuss) || !!s.game || (s.focusLeft ?? -1) >= 0;
   if (!l) return;
   if (l.fuss && !fussWas) { chirp(2600, 0, 0.08); chirp(2600, 0.14, 0.08); chirp(2900, 0.28, 0.12); }  // a cross little squawk
   fussWas = l.fuss;
@@ -1036,11 +1037,11 @@ function showLife(s) {
   $("trickBtn").textContent = l.tricks ? "✨ Show me a trick" : "✨ No tricks yet: wait for a fuss";
   // Age, parties, old age and the golden legend.
   const next = PARTIES.find((d) => d > (s.ageDays || 0));
-  const badges = (l.senior ? `<span class="badge">👓 wise old bird</span>` : "") + (l.golden ? `<span class="badge gold">✨ golden</span>` : "");
+  const badges = (l.senior ? `<span class="badge">🍵 wise old bird</span>` : "") + (l.golden ? `<span class="badge gold">✨ golden</span>` : "");
   $("ageLine").innerHTML = `<span>🎂 ${s.ageDays || 0} days old</span>${badges}`;
   $("ageHint").textContent = (next ? `Next party at ${next} days. ` : "") +
     (l.golden ? "A golden bird: the rarest of all. 金色のオカメ ✨" :
-     l.senior ? "A wise old bird now: it naps a little more and eats a little less." :
+     l.senior ? "A wise old bird now, with its little walking stick: it naps a little more and eats a little less." :
      "From 30 days old, a bird grows wise. Legend says one cared for almost perfectly turns to gold ✨");
   $("bestLR").textContent = l.lrBest ? `· best ${l.lrBest}/5` : "";
   $("clockCover").checked = !!l.clockOnCover;

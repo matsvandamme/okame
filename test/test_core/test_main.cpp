@@ -709,6 +709,57 @@ void test_calm_no_shows_the_new_trick() {
   TEST_ASSERT_FALSE(ui.showTrick(TRICK_HANG, e.nowMs));  // not learned
 }
 
+
+void test_life_belongs_to_its_egg_and_reveals_survive_a_reboot() {
+  Pet p = adultAged(31, 0, 250);
+  p.tick(T0 + MIN);
+  TEST_ASSERT_TRUE(p.golden());
+  PetLife saved = p.life();
+  TEST_ASSERT_EQUAL(p.state().eggStart, saved.eggStart);
+  // A reboot before the reveal could play (at night): the flag is saved, the moment still comes.
+  Pet q = adultAged(31, 0, 250);
+  q.loadLife(saved);
+  Ui ui(q, 3);
+  Env e = dayEnv({2026, 11, 13}, 14);
+  e.epoch = T0 + MIN;
+  for (int i = 0; i < 3; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_EQUAL(2, ui.takeMilestone());
+  TEST_ASSERT_EQUAL(1, q.life().goldenShown);
+  // Another egg (a rollback started one): only the settings carry over.
+  saved.eggStart = 12345;
+  saved.alarm = {6, 45, 1, 1};
+  Pet r = adultAged(5);
+  r.loadLife(saved);
+  TEST_ASSERT_FALSE(r.golden());
+  TEST_ASSERT_EQUAL(0, r.life().training);
+  TEST_ASSERT_EQUAL(6, r.life().alarm.h);
+}
+
+void test_alarm_waits_for_a_busy_bird_and_never_repeats() {
+  Pet p = adultAged(5);
+  p.lifeMut().alarm = {7, 30, 0x7f, 1};
+  p.lifeMut().partyDays = 7;
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 16}, 7);
+  e.epoch = T0;
+  e.minute = 29;
+  ui.update(e);
+  ui.startGame(Ui::Game::LeftRight, e.nowMs);
+  e.minute = 30;
+  for (int i = 0; i < 3; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_EQUAL(Screen::LeftRight, ui.screen());  // a game isn't cut off
+  for (int i = 0; i < 130; i++) { e.nowMs += 100; ui.update(e); }  // nobody plays: the game ends
+  e.minute = 33;
+  e.nowMs += 100;
+  ui.update(e);
+  TEST_ASSERT_EQUAL(Screen::Anim, ui.screen());  // greeted, a little late
+  int32_t day = p.life().alarmDay;
+  Ui again(p, 4);  // a reboot in the same minutes
+  for (int i = 0; i < 3; i++) { e.nowMs += 100; again.update(e); }
+  TEST_ASSERT_EQUAL(Screen::Main, again.screen());
+  TEST_ASSERT_EQUAL(day, p.life().alarmDay);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_egg_hatches_after_two_minutes);
@@ -758,5 +809,7 @@ int main() {
   RUN_TEST(test_party_plays_on_the_main_screen_once);
   RUN_TEST(test_alarm_greets_on_its_days_only);
   RUN_TEST(test_calm_no_shows_the_new_trick);
+  RUN_TEST(test_life_belongs_to_its_egg_and_reveals_survive_a_reboot);
+  RUN_TEST(test_alarm_waits_for_a_busy_bird_and_never_repeats);
   return UNITY_END();
 }

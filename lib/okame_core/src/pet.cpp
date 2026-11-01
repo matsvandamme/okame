@@ -26,6 +26,8 @@ void Pet::reset(uint32_t now) {
   l_.version = LIFE_VERSION;
   l_.alarm = keepLife.alarm;
   l_.clockOnCover = keepLife.clockOnCover;
+  l_.alarmDay = keepLife.alarmDay;
+  l_.eggStart = now;
 }
 
 bool Pet::load(const PetState& st) {
@@ -94,6 +96,7 @@ void Pet::grow(uint32_t now) {
 
 void Pet::step(uint32_t now, uint32_t dt) {
   // A bird that was already grown up when 0.6 arrived: its care counts from today.
+  if (!l_.eggStart) l_.eggStart = s_.eggStart;
   if (s_.stage == Stage::Adult && !l_.baselined) {
     l_.adultMistakes = s_.mistakes;
     l_.baselined = 1;
@@ -412,7 +415,15 @@ Occasion occasion(const Date& t, const PetExtra& x) {
 
 void Pet::loadLife(const PetLife& l) {
   if (l.version != LIFE_VERSION) return;
+  if (l.eggStart && l.eggStart != s_.eggStart) {  // saved for another egg: only the settings carry over
+    l_.alarm = l.alarm;
+    l_.clockOnCover = l.clockOnCover;
+    l_.alarmDay = l.alarmDay;
+    l_.eggStart = s_.eggStart;
+    return;
+  }
   l_ = l;
+  l_.eggStart = s_.eggStart;
   if (l_.training > TRICK_COUNT) l_.training = TRICK_COUNT;
   l_.tricks &= (1 << TRICK_COUNT) - 1;
 }

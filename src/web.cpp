@@ -406,6 +406,7 @@ void handleFuss(AsyncWebServerRequest* r) {
     app::Lock lock;
     uint32_t now = app::epoch();
     if (!app::pet.fussing(now)) return sendJson(r, 409, "{\"error\":\"not fussing\"}");
+    if (!app::ui.canReact()) return sendJson(r, 409, "{\"error\":\"busy\"}");  // never cuts off a game or a party
     if (a == "spoil") {
       Result res = app::pet.spoilFuss(now);
       app::ui.remoteAction(Action::Millet, res, millis());

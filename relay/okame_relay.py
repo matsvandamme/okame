@@ -394,7 +394,7 @@ def status_caption():
         f"napping away from Wi-Fi 💤 (last seen {datetime.fromtimestamp(device['last_seen'], TZ):%a %H:%M})"
     name = esc(s.get("name")) or "Okame"
     life = s.get("life") or {}
-    wise = " · ✨ golden" if life.get("golden") else " · 👓 wise old bird" if life.get("senior") else ""
+    wise = " · ✨ golden" if life.get("golden") else " · 🍵 wise old bird" if life.get("senior") else ""
     return (f"<b>{name}</b> · {s.get('stage')} · {s.get('ageDays', 0)}d · {s.get('weight', 0)}g{wise}\n"
             f"Food {hearts(s.get('hunger'))}\nJoy  {hearts(s.get('happy'))}\n"
             f"Mood: {s.get('mood')}{' · 🤒 sick' if s.get('sick') else ''}{' · 💩' * int(s.get('poop') or 0)}\n{seen}")
@@ -621,6 +621,8 @@ async def sync(request):
     if body.get("state"):
         before = device["state"]
         device["state"] = body["state"]
+        if isinstance(body["state"].get("life"), dict) and "alarm" in body["state"]["life"]:
+            alarm_set(body["state"]["life"]["alarm"])  # the egg's saved alarm is the truth (events can be lost)
         kv_set("state", body["state"])
         await notice_changes(before, body["state"])
     if body.get("frame"):
@@ -1111,15 +1113,16 @@ async def grew_wise(e):
     event(name, "turned golden" if golden else "became a wise old bird")
     text = (f"✨✨ <b>{name} turned GOLDEN!</b> ✨✨\nA bird cared for almost perfectly grows into the rarest form of all: "
             f"a golden lutino. 金色のオカメ! Thank you for looking after me so well 💛") if golden else \
-        (f"👓 <b>{name} is a wise old bird now.</b> I'll nap a little more and eat a little less, "
+        (f"🍵 <b>{name} is a wise old bird now.</b> I've got a little walking stick, I'll nap a little more and eat a little less, "
          f"and I still love you both the same ピヨ")
     for u in users():
         await show(u["chat_id"], text)
 
 
 def alarm_set(e):
-    kv_set("alarm", {"h": int(e.get("h", 7)), "m": int(e.get("m", 0)), "days": int(e.get("days", 0)),
-                     "on": bool(e.get("on"))})
+    a = {"h": int(e.get("h", 7)), "m": int(e.get("m", 0)), "days": int(e.get("days", 0)), "on": bool(e.get("on"))}
+    if kv_get("alarm") != a:
+        kv_set("alarm", a)
 
 
 async def alarm_event(e):
@@ -1129,13 +1132,13 @@ async def alarm_event(e):
 async def alarms(now):
     """Haruki's wake-up alarm, set on the page: a good morning on her phone (the laptop may well be closed)."""
     a = kv_get("alarm")
-    if not a or not a.get("on") or not (a["days"] >> now.weekday()) & 1:
+    if not a or not a.get("on") or not egg_has(V06) or not (a["days"] >> now.weekday()) & 1:
         return
     due = now.replace(hour=a["h"], minute=a["m"], second=0, microsecond=0)
-    today = now.date().isoformat()
-    if not (due <= now < due + timedelta(minutes=10)) or kv_get("alarm_fired", "") == today:
+    fired = f"{now.date().isoformat()} {a['h']:02d}:{a['m']:02d}"  # moving the alarm later today rings again
+    if not (due <= now < due + timedelta(minutes=10)) or kv_get("alarm_fired", "") == fired:
         return
-    kv_set("alarm_fired", today)
+    kv_set("alarm_fired", fired)
     ids = {p["chat_id"] for p in partners()}
     for u in users():
         if u["chat_id"] in ids:
@@ -1176,7 +1179,7 @@ WHATS_NEW_05 = (
 WHATS_NEW_06_MATTHIEU = (
     "✨ <b>I updated myself again!</b> ピヨ Classic Tamagotchi things now:\n\n"
     "💢 I sometimes throw a little tantrum; Haruki teaches me manners, and every lesson is a new trick. "
-    "Ask for one with /trick\n🎂 parties on my 7th, 10th, 30th… day\n👓 from 30 days I grow into a wise old bird, "
+    "Ask for one with /trick\n🎂 parties on my 7th, 10th, 30th… day\n🍵 from 30 days I grow into a wise old bird, "
     "and legend says a bird cared for almost perfectly turns golden ✨\n⬅️➡️ Left or Right?, the very first "
     "Tamagotchi game\n🕐 a clock, and a wake-up alarm for Haruki")
 WHATS_NEW_06_HARUKI = (

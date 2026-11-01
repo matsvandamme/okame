@@ -8,12 +8,16 @@
 ##.##
 .#.#.
 
-; ---- a senior's reading glasses, drawn where the sunglasses sit: an open lens round the eye, the arm reaching
-; back over the head. A clear edge above and below the arm keeps it apart from a budgie's barred head.
-@ glasses
-ooo###
-####.#
-ooo###
+; ---- a wise old bird leans on a little walking stick (reading glasses melt into the head at 40x20)
+@ cane
+.##.
+#..#
+#...
+#...
+#...
+#...
+#...
+#...
 
 ; ---- Left or Right?
 @ arr_l

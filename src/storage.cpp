@@ -42,11 +42,15 @@ void loadBirds(Pet& pet) {
 void saveBirds(const PetBirds& b) { prefs.putBytes("pet3", &b, sizeof b); }
 
 void loadLife(Pet& pet) {
+  // Later releases append fields: a shorter save loads zero-filled, a longer one (after a rollback) loses only
+  // the fields this firmware doesn't know.
   size_t len = prefs.getBytesLength("pet4");
-  if (len < 2 || len > sizeof(PetLife)) return;  // later releases append fields: a shorter save loads zero-filled
+  static uint8_t buf[512];
+  if (len < 2 || len > sizeof buf) return;
+  memset(buf, 0, sizeof buf);
+  prefs.getBytes("pet4", buf, len);
   PetLife l;
-  memset(&l, 0, sizeof l);
-  prefs.getBytes("pet4", &l, len);
+  memcpy(&l, buf, sizeof l);
   pet.loadLife(l);
 }
 

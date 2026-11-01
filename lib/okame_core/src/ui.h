@@ -112,6 +112,8 @@ class Ui {
   void calmed(int newTrick, uint32_t nowMs);
   // A trick on request (from the page or Telegram); trick < 0 picks a known one. False when it knows none or is busy.
   bool showTrick(int trick, uint32_t nowMs);
+  // Something from the page or Telegram may play now: the main screen, or an animation that isn't a once-only moment.
+  bool canReact() const { return screen_ == Screen::Main || (screen_ == Screen::Anim && !onceKind(anim_)); }
   // The clock, for a few seconds (from the page).
   bool showClock(uint32_t nowMs);
   int takeParty() { int d = partyOut_; partyOut_ = 0; return d; }              // an age party just played (days)
@@ -185,7 +187,7 @@ class Ui {
   uint32_t animMs() const;
   void maybeLife(const Env& env);
   void checkAlarm(const Env& env);
-  void drawGlasses(Pose pose, int x, int y, bool flip);
+  void drawCane(Pose pose, int x, int y, bool flip);
   void drawTrick(uint32_t el);
   void drawLifeAnim(const Env& env, uint32_t el);
   void drawLeftRight(const Env& env);
@@ -193,8 +195,8 @@ class Ui {
   void drawTime(const Env& env, int y, bool on);
   LeftRight lr_;
   int trick_ = 0, pendingTrick_ = -1, partyDays_ = 0, partyOut_ = 0, milestoneOut_ = 0;
-  bool newTrick_ = false, lastSenior_ = false, lastGolden_ = false, seniorDue_ = false, goldenDue_ = false;
-  int32_t alarmDay_ = 0;
+  bool newTrick_ = false;
+  uint32_t epoch_ = 0;  // the game clock at the last update, for requests that arrive between updates
   uint32_t nextFussCheck_ = 0, nextTrick_ = 0, dozeUntil_ = 0;
   uint32_t focusEnd_ = 0, focusStart_ = 0;
   int focusDoneMin_ = 0, rainRecord_ = 0;
