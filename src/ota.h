@@ -8,7 +8,8 @@ namespace ota {
 void begin();
 // Call often. Starts a background check when due and the bird is idle.
 void loop(bool online, bool idle, uint32_t epoch);
-void checkNow();
+void checkNow();         // from the page button or Telegram /update: skip the timer and any retry wait
+bool busy();             // a requested or running check has not finished yet
 int progress();          // -1 when not installing, else 0..100
 const char* status();    // human-readable last result
 uint32_t lastCheck();

@@ -198,5 +198,28 @@ async def t_friends():
           and sum("again" in t for t in said(HARUKI)) == 1)
 TESTS.append(t_friends)
 
+
+async def t_update():
+    sent.clear()
+    r.device["state"] = {"fw": "0.5.0"}
+    await r.handle(msg(MATTHIEU, "/update"))
+    check("/update on 0.5.0 explains the daily check", "once a day" in said(MATTHIEU)[-1] and not queued("ota"))
+    r.device["state"] = {"fw": "0.5.1"}
+    await r.handle(msg(MATTHIEU, "/update"))
+    qid = r.db.execute("select max(id) from queue where kind='ota'").fetchone()[0]
+    check("/update queues an OTA check", queued("ota") == [{}] and "GitHub" in said(MATTHIEU)[-1])
+    await r.acked({"id": qid, "result": "up to date"})
+    check("up to date is reported", "Already on the newest firmware (0.5.1)" in said(MATTHIEU)[-1])
+    await r.handle(msg(MATTHIEU, "/update"))
+    qid = r.db.execute("select max(id) from queue where kind='ota'").fetchone()[0]
+    sent.clear()
+    r.device["state"] = {"fw": "0.5.2"}
+    await r.fw_changed("0.5.1")
+    check("an installed update is reported once", said(MATTHIEU) == ["✨ Updated from 0.5.1 to 0.5.2! Fresh feathers ピヨ"])
+    await r.acked({"id": qid, "result": "up to date"})  # the rebooted egg checking again
+    await r.fw_changed("0.5.1")
+    check("no double report after the reboot", len(said(MATTHIEU)) == 1 and not said(HARUKI))
+TESTS.append(t_update)
+
 if __name__ == "__main__":
     asyncio.run(main())

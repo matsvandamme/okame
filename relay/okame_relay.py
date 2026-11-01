@@ -443,6 +443,8 @@ async def handle(msg):
         return await catch_start(chat, name)
     if cmd == "/home":
         return await home_cmd(chat, name, arg)
+    if cmd == "/update":
+        return await update_cmd(chat)
     if cmd == "/hug":
         if not egg_has(V04):
             return await say(chat, UPDATE_FIRST)
@@ -617,6 +619,8 @@ async def sync(request):
     for e in body.get("events", [])[:16]:
         if isinstance(e, dict):
             asyncio.create_task(safe(on_event(e)))
+    if fw_before and device["state"].get("fw") != fw_before:
+        asyncio.create_task(safe(fw_changed(fw_before)))
     if away > 300 or device["state"].get("fw") != fw_before:
         asyncio.create_task(safe(on_connect()))
     cmds = pending()
@@ -645,10 +649,37 @@ async def acked(ack):
         await say(chat, "✓ Your note is on my screen now 💌")
     elif kind == "hug" and result == "shown":
         await say(chat, "🤗 Your hug just arrived on my screen. ピヨ💛")
+    elif kind == "ota":
+        watch = kv_get("ota_watch")
+        if watch and watch["id"] == row["id"] and not result.startswith("installed"):  # fw_changed reports those
+            kv_set("ota_watch", None)
+            fw = device["state"].get("fw")
+            await say(chat, f"✓ Already on the newest firmware ({esc(fw)}) 🪶" if result == "up to date"
+                      else f"⚠️ Update check: {esc(result)}")
     elif kind == "act":
         payload = json.loads(row["payload"])
         await asyncio.sleep(2.5)  # let the egg's animation start before taking its picture
         await show(chat, RESULT_TEXT.get(result, "Done! ピヨ ✨"), label=payload["action"])
+
+
+async def update_cmd(chat):
+    """Matthieu's push button for OTA: the egg checks GitHub now instead of waiting for its daily check."""
+    if not egg_has(V051):
+        return await say(chat, "My firmware is too old to update on command 🪶 It checks GitHub by itself once a day, "
+                               "or tap <b>Check for an update now</b> in Settings on okame.local.")
+    qid = enqueue("ota", {}, chat)
+    kv_set("ota_watch", {"id": qid, "chat": chat})
+    where = "now" if online() else "the moment I'm back on Wi-Fi"
+    return await say(chat, f"🪶 Looking for new feathers on GitHub {where}… I'll tell you what I find.")
+
+
+async def fw_changed(before):
+    watch = kv_get("ota_watch")
+    if not watch:
+        return
+    kv_set("ota_watch", None)
+    db.execute("update queue set done=?, result=? where id=? and done is null", (time.time(), "installed", watch["id"]))
+    await say(watch["chat"], f"✨ Updated from {esc(before)} to {esc(device['state'].get('fw'))}! Fresh feathers ピヨ")
 
 
 def fw_tuple(s):
@@ -662,6 +693,7 @@ def egg_has(version):
 
 V04 = (0, 4, 0)  # hug, words, countdown, weather, dates, rival: older eggs answer "unknown" to these
 V05 = (0, 5, 0)  # visiting friends, the pigeon post, budgie and owl eggs
+V051 = (0, 5, 1)  # /update: check GitHub for a signed release now
 UPDATE_FIRST = "My little screen needs an update before I can do that 🛠️ ピヨ"
 
 

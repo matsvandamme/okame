@@ -45,3 +45,4 @@ print(json.dumps(manifest, indent=2))
 if publish:
     subprocess.check_call(["gh", "release", "create", f"v{name}", str(out / "okame.bin"), str(out / "manifest.json"),
                            "--repo", REPO, "--title", f"Okame {name}", "--notes", f"Firmware {name} (OTA version {version})."])
+    print(f"\nPublished v{name}. Send /update to the Okame bot to install it now, or the egg finds it within a day.")

@@ -6,6 +6,7 @@
 #include "app.h"
 #include "config.h"
 #include "net.h"
+#include "ota.h"
 #include "relay_cert.h"
 #include <mbedtls/x509_crt.h>
 #include <esp_log.h>
@@ -30,6 +31,7 @@ std::vector<Ack> acks;       // results waiting for the next poll
 std::vector<String> events;  // things that happened here, for the relay (cloud::event)
 std::vector<String> shows;   // notes and pictures waiting their turn on the screen
 int pendingMsgAck = -1;      // note on screen: ack when it has scrolled by
+int otaAck = -1;             // Telegram /update: ack once the check has finished
 String pendingMsg;           // ... and the command itself, to replay it if something interrupts it
 int seen[32];                // recent command ids, so a resent command is not applied twice
 int seenAt = 0;
@@ -250,6 +252,9 @@ void apply(JsonDocument& cmd, const String& raw) {
     app::pet.extraMut().rivalRain = cmd["score"] | 0;
     app::requestSave();
     ack(id, "ok");
+  } else if (type == "ota") {  // Telegram /update: look for a signed release now; acked with the result
+    ota::checkNow();
+    otaAck = id;
   } else if (type == "pair") {
     String code = cmd["code"] | "0";
     app::ui.showCode(code.toInt(), "TELEGRAM", now, 3 * 60 * 1000);
@@ -336,6 +341,10 @@ void loop() {
   for (auto& s : todo) {
     JsonDocument cmd;
     if (!deserializeJson(cmd, s) && !seenBefore(cmd["id"] | 0)) apply(cmd, s);
+  }
+  if (otaAck >= 0 && !ota::busy() && !ota::rebootDue()) {  // an installed update reboots instead; the relay sees the new fw
+    ack(otaAck, ota::status());
+    otaAck = -1;
   }
   app::Lock lock;
   if (pendingMsgAck >= 0 && app::ui.screen() != Screen::Message) {

@@ -170,7 +170,12 @@ void healthy() {
   setStatus("new version confirmed");
 }
 
-void checkNow() { wanted = true; }
+void checkNow() {
+  wanted = true;
+  retryAtMs = 0;
+}
+
+bool busy() { return wanted || running; }
 
 void loop(bool online, bool idle, uint32_t epoch) {
   if (running || !online || reboot) return;
