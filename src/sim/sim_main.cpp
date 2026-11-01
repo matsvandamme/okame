@@ -656,6 +656,96 @@ int main(int argc, char** argv) {
       shot("63_wake_bird");
     }
   }
+  {  // 0.7: toys, outings and postcards, partner, a new generation, family visits
+    const char* sp[] = {"cockatiel", "budgie", "owl"};
+    for (int k = 0; k < 3; k++) {
+      Sim s;
+      s.pet.setSpecies(Species(k));
+      s.pet.reset(s.env.epoch);
+      s.stage(Stage::Adult, Variant::Pied);
+      s.tweak([](PetState& st) { st.born -= 20 * rules::DAY; strcpy(st.name, "MANON"); });
+      s.pet.lifeMut().partyDays = 30;
+      s.pet.lifeMut().seniorShown = 1;
+      s.env.today = {2026, 11, 13};
+      s.env.hour = 11;
+      s.env.minute = 5;
+      char n[64];
+      auto shot = [&](const char* what) {
+        snprintf(n, sizeof n, "e%d_%s_%s", k, sp[k], what);
+        s.shot(n);
+      };
+      s.pet.earn(200);
+      s.run(400);
+      const char* tn[] = {"swing", "bell", "mirror", "ladder", "perch"};
+      for (int toy = 0; toy < TOY_COUNT; toy++) {
+        s.pet.buyToy(toy);
+        s.pet.placeToy(toy + 1);
+        s.run(6000);
+        char w[32];
+        snprintf(w, sizeof w, "0%d_cage_%s", toy, tn[toy]);
+        shot(w);
+        s.ui.playWithToy(s.t);
+        s.run(700);
+        snprintf(w, sizeof w, "1%d_play_%s_a", toy, tn[toy]);
+        shot(w);
+        s.run(800);
+        snprintf(w, sizeof w, "1%d_play_%s_b", toy, tn[toy]);
+        shot(w);
+        s.run(4000);
+      }
+      s.pet.placeToy(0);
+      const char* pn[] = {"park", "cafe", "beach", "shrine", "windmill", "frites"};
+      for (int pl = 0; pl < PLACE_COUNT; pl++) {
+        s.run(3000);
+        bool ok = s.ui.goOut(pl, s.t);
+        s.run(1500);
+        char w[32];
+        if (pl == 0) shot("20_leave");
+        s.run(2000);
+        snprintf(w, sizeof w, "21_away_%s", pn[pl]);
+        if (ok) shot(w);
+        s.env.epoch += 95 * 60;
+        s.pet.tick(s.env.epoch);
+        s.run(300);
+        s.run(1300);
+        snprintf(w, sizeof w, "22_postcard_%s", pn[pl]);
+        shot(w);
+        s.run(2500);
+        if (pl == 0) shot("23_tadaima");
+        s.run(1600);
+        if (pl == 0) shot("24_home_bag");
+        s.run(2000);
+      }
+      s.run(3000);
+      s.pet.findPartner(s.env.epoch, civil(s.env.today));
+      s.ui.partnerVisit(s.t);
+      s.run(700);
+      shot("30_partner_in");
+      s.run(1800);
+      shot("31_partner_love");
+      s.run(5000);
+      s.env.today = {2026, 11, 14};
+      s.run(500);
+      shot("32_new_egg_words");
+      s.run(2600);
+      shot("33_new_egg_parent");
+      s.run(2400);
+      shot("34_new_egg_leaving");
+      s.run(3000);
+      shot("35_egg_main");
+      // grown up again: grandma visits
+      s.stage(Stage::Adult, Variant::Pearl);
+      s.pet.lifeMut().partyDays = 30;
+      s.run(500);
+      s.ui.forceAnim(Anim::Family, s.t);
+      s.run(800);
+      shot("40_family_name");
+      s.run(1700);
+      shot("41_family_in");
+      s.run(1500);
+      shot("42_family_love");
+    }
+  }
   {  // Frame sequence of the main screen for the web mock server
     Sim s;
     s.stage(Stage::Adult, Variant::Pearl);

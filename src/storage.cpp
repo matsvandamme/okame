@@ -56,6 +56,19 @@ void loadLife(Pet& pet) {
 
 void saveLife(const PetLife& l) { prefs.putBytes("pet4", &l, sizeof l); }
 
+void loadHome(Pet& pet) {
+  size_t len = prefs.getBytesLength("pet5");
+  static uint8_t buf[512];
+  if (len < 2 || len > sizeof buf) return;
+  memset(buf, 0, sizeof buf);
+  prefs.getBytes("pet5", buf, len);
+  static PetHome h;
+  memcpy(&h, buf, sizeof h);
+  pet.loadHome(h);
+}
+
+void saveHome(const PetHome& h) { prefs.putBytes("pet5", &h, sizeof h); }
+
 int loadNetworks(SavedNetwork* out, int max) {
   size_t len = prefs.getBytesLength("nets");
   int n = len / sizeof(SavedNetwork);

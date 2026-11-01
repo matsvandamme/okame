@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Serve the built phone page with a fake API, for screenshots without the dongle.
 
-usage: mock_server.py [port] [--setup] [--named] [--full] [--owl|--budgie] [--gone] [--fuss] [--golden]
+usage: mock_server.py [port] [--setup] [--named] [--full] [--owl|--budgie] [--gone] [--fuss] [--golden] [--away] [--family]
 """
 import json
 import pathlib
@@ -44,7 +44,14 @@ if FULL:
         "life": {"training": 2, "tricks": 0b0011, "fuss": "--fuss" in sys.argv, "senior": True,
                  "golden": "--golden" in sys.argv, "party": 30, "lrBest": 4, "clockOnCover": True,
                  "alarm": {"h": 7, "m": 30, "days": 0x1f, "on": True}},
+        "home": {"points": 46, "toys": 0b00010, "toy": 2, "souvenirs": 0b000011, "generation": 0, "partner": False,
+                 "canPartner": True, "away": 2 if "--away" in sys.argv else -1, "backIn": 47,
+                 "canGo": [0 if "--away" in sys.argv else 1] * 6, "family": []},
     })
+    if "--family" in sys.argv:
+        STATE["home"].update({"generation": 1, "canPartner": False, "family": [
+            {"name": "MANON", "species": "cockatiel", "variant": "pied", "golden": True, "gen": 0, "days": 41}]})
+        STATE["name"] = "Kiki"
 for flag in ("owl", "budgie"):
     if f"--{flag}" in sys.argv:
         STATE["species"] = flag
@@ -155,7 +162,29 @@ class H(BaseHTTPRequestHandler):
             if "cover" in q:
                 STATE["life"]["clockOnCover"] = q["cover"] == "1"
             return self.send(200, {"ok": True})
-        if self.path in ("/api/love", "/api/wear", "/api/say", "/api/trick"):
+        if self.path == "/api/shop/buy":
+            h = STATE["home"]
+            price = {"treat": 5, "toy": [30, 20, 25, 30, 20][int(q.get("n", 0))], "hat": 40}[q["item"]]
+            if h["points"] < price:
+                return self.send(409, {"error": "not enough seeds"})
+            h["points"] -= price
+            if q["item"] == "toy":
+                h["toys"] |= 1 << int(q["n"])
+            if q["item"] == "hat":
+                STATE["unlocked"] |= 1 << int(q["n"])
+            return self.send(200, {"ok": True, "points": h["points"]})
+        if self.path == "/api/cage":
+            STATE["home"]["toy"] = int(q.get("toy", 0))
+            return self.send(200, {"ok": True})
+        if self.path == "/api/outing":
+            STATE["home"].update({"away": int(q["place"]), "backIn": 75, "canGo": [0] * 6})
+            return self.send(200, {"ok": True})
+        if self.path == "/api/partner":
+            if not self.authed():
+                return self.send(401, {"error": "pair first"})
+            STATE["home"].update({"partner": True, "canPartner": False})
+            return self.send(200, {"ok": True})
+        if self.path in ("/api/love", "/api/wear", "/api/say", "/api/trick", "/api/toy-play"):
             return self.send(200, {"ok": True})
         if self.path == "/api/gift":
             return self.send(200, {"gift": -1})

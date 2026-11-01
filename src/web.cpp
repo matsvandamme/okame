@@ -47,6 +47,7 @@ const char* resultName(Result r) {
     case Result::Ok: return "ok";
     case Result::Refused: return "refused";
     case Result::NotNeeded: return "not-needed";
+    case Result::Away: return "away";
     default: return "sleeping";
   }
 }
@@ -130,7 +131,7 @@ String web::stateJson() {
   char frame[201];
   app::frameHex(frame);
   String j;
-  j.reserve(900);
+  j.reserve(2048);
   j += "{\"name\":" + jsonString(s.name);
   j += ",\"stage\":\"" + String(stageName(s.stage)) + "\"";
   j += ",\"variant\":\"" + String(variantName(s.variant)) + "\"";
@@ -192,6 +193,27 @@ String web::stateJson() {
   j += ",\"hat\":" + String(s.hat) + ",\"unlocked\":" + String(s.unlocked);
   j += ",\"giftReady\":" + String(app::pet.giftReady(now) ? "true" : "false");
   j += ",\"bestRain\":" + String(s.bestRain);
+  {
+    static const char* const SPECIES[] = {"cockatiel", "budgie", "owl"};
+    const PetHome& h = app::pet.home();
+    const PetLife::Outing& o = app::pet.life().outing;
+    j += ",\"home\":{\"points\":" + String(h.points) + ",\"toys\":" + String(h.toys) + ",\"toy\":" + String(h.toy) +
+         ",\"souvenirs\":" + String(h.souvenirs) + ",\"generation\":" + String(h.generation) +
+         ",\"partner\":" + (h.partnerAt ? "true" : "false") +
+         ",\"canPartner\":" + (app::pet.canFindPartner(now) ? "true" : "false") +
+         ",\"away\":" + (app::pet.away(now) ? String(o.place - 1) : String(-1)) +
+         ",\"backIn\":" + String(app::pet.away(now) ? (o.back - now + 59) / 60 : 0) + ",\"canGo\":[";
+    for (int i = 0; i < PLACE_COUNT; i++) j += String(i ? "," : "") + (app::pet.canGoOut(i, now) ? "1" : "0");
+    j += "],\"family\":[";
+    for (int i = 0; i < h.familyCount; i++) {
+      const PetHome::Member& m = h.family[i];
+      j += String(i ? "," : "") + "{\"name\":" + jsonString(m.name) + ",\"species\":\"" +
+           SPECIES[m.species < 3 ? m.species : 0] + "\",\"variant\":\"" + variantName(Variant(m.variant)) +
+           "\",\"golden\":" + (m.golden ? "true" : "false") + ",\"gen\":" + String(m.generation) +
+           ",\"days\":" + String(m.days) + "}";
+    }
+    j += "]}";
+  }
   {
     const PetLife& l = app::pet.life();
     j += ",\"life\":{\"training\":" + String(l.training) + ",\"tricks\":" + String(l.tricks) +
@@ -456,6 +478,81 @@ void handleAlarm(AsyncWebServerRequest* r) {
   sendJson(r, 200, "{\"ok\":true}");
 }
 
+// The bird shop: item=treat, item=toy&n=Toy, item=hat&n=Accessory.
+void handleBuy(AsyncWebServerRequest* r) {
+  String item = param(r, "item");
+  int n = param(r, "n").toInt(), res;
+  {
+    app::Lock lock;
+    if (item == "treat") {
+      res = app::pet.buyTreat(app::epoch());
+      if (!res) app::ui.remoteAction(Action::Millet, Result::Ok, millis());
+    } else if (item == "toy") {
+      res = n >= 0 && n < TOY_COUNT ? app::pet.buyToy(n) : -3;
+    } else if (item == "hat") {
+      res = app::pet.buyHat(n);
+      if (!res) {
+        app::pet.wear(n);
+        app::ui.showGift(n, millis());
+      }
+    } else {
+      res = -3;
+    }
+  }
+  if (!res) app::requestSave();
+  static const char* const ERR[] = {"", "not enough seeds", "already have it", "not now"};
+  if (res) return sendJson(r, 409, String("{\"error\":\"") + ERR[-res] + "\"}");
+  sendJson(r, 200, String("{\"ok\":true,\"points\":") + app::pet.home().points + "}");
+}
+
+void handleCage(AsyncWebServerRequest* r) {
+  bool ok;
+  {
+    app::Lock lock;
+    ok = app::pet.placeToy(param(r, "toy").toInt());
+  }
+  if (ok) app::requestSave();
+  sendJson(r, ok ? 200 : 400, ok ? "{\"ok\":true}" : "{\"error\":\"buy it first\"}");
+}
+
+void handleToyPlay(AsyncWebServerRequest* r) {
+  bool ok;
+  {
+    app::Lock lock;
+    ok = app::ui.playWithToy(millis());
+  }
+  if (ok) app::requestSave();
+  sendJson(r, ok ? 200 : 409, ok ? "{\"ok\":true}" : "{\"error\":\"not now\"}");
+}
+
+void handleOuting(AsyncWebServerRequest* r) {
+  int place = param(r, "place").toInt();
+  bool ok;
+  {
+    app::Lock lock;
+    ok = place >= 0 && place < PLACE_COUNT && app::ui.goOut(place, millis());
+  }
+  if (ok) app::requestSave();
+  sendJson(r, ok ? 200 : 409, ok ? "{\"ok\":true}" : "{\"error\":\"not now\"}");
+}
+
+// A partner for a grown bird: a setting (it starts the next generation tomorrow morning).
+void handlePartner(AsyncWebServerRequest* r) {
+  if (!authorized(r)) return denied(r);
+  bool ok;
+  {
+    app::Lock lock;
+    Date d = app::today();
+    ok = d.y && app::ui.canReact() && app::pet.findPartner(app::epoch(), civil(d));
+    if (ok) app::ui.partnerVisit(millis());
+  }
+  if (ok) {
+    app::requestSave();
+    cloud::event("{\"type\":\"partner\"}");
+  }
+  sendJson(r, ok ? 200 : 409, ok ? "{\"ok\":true}" : "{\"error\":\"not now\"}");
+}
+
 void handleWear(AsyncWebServerRequest* r) {
   bool ok;
   {
@@ -530,6 +627,11 @@ void begin() {
   server.on("/api/trick", HTTP_POST, handleTrick);
   server.on("/api/clock", HTTP_POST, handleClock);
   server.on("/api/alarm", HTTP_POST, handleAlarm);
+  server.on("/api/shop/buy", HTTP_POST, handleBuy);
+  server.on("/api/cage", HTTP_POST, handleCage);
+  server.on("/api/toy-play", HTTP_POST, handleToyPlay);
+  server.on("/api/outing", HTTP_POST, handleOuting);
+  server.on("/api/partner", HTTP_POST, handlePartner);
   server.on("/api/settings", HTTP_GET, handleSettings);
   server.on("/api/scan", HTTP_GET, [](AsyncWebServerRequest* r) {
     if (!authorized(r)) return denied(r);

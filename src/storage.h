@@ -19,6 +19,8 @@ void loadBirds(Pet& pet);   // 0.5: species and friends, under "pet3"
 void saveBirds(const PetBirds& b);
 void loadLife(Pet& pet);    // 0.6: training, old age, clock and alarm, under "pet4"
 void saveLife(const PetLife& l);
+void loadHome(Pet& pet);    // 0.7: seeds, toys, souvenirs and the family album, under "pet5"
+void saveHome(const PetHome& h);
 int loadNetworks(SavedNetwork* out, int max);
 void saveNetworks(const SavedNetwork* nets, int n);
 String apPassword();   // generated once, shown on the LCD

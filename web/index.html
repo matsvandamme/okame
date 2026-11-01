@@ -99,6 +99,20 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .age { display: flex; gap: 10px; align-items: center; margin-top: 4px; font-size: 13px; font-weight: 700; }
 .badge { font-size: 11px; font-weight: 900; border: 2px solid var(--ink); border-radius: 99px; padding: 1px 8px; background: #fff; }
 .badge.gold { background: #ffe36b; }
+.shop { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.shop button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px; font-size: 13px; }
+.shop button canvas { image-rendering: pixelated; flex: 0 0 auto; }
+.shop button small { display: block; font-weight: 700; opacity: .65; font-size: 11px; }
+.shop button.owned { border-style: dashed; box-shadow: none; }
+.shop button.placed { background: var(--ink); color: var(--yellow); }
+.shop button.placed canvas { filter: invert(1) sepia(1) saturate(4) hue-rotate(10deg); }
+.places { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.places button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px; font-size: 13px; }
+.places button small { display: block; font-weight: 700; opacity: .65; font-size: 11px; }
+.places button canvas { image-rendering: pixelated; flex: 0 0 auto; }
+.away { font-weight: 800; background: #fff; border: 3px solid var(--ink); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
+.album { display: grid; gap: 8px; margin: 8px 0; }
+.album .friend canvas { width: 54px !important; }
 .days { display: flex; gap: 4px; flex-wrap: wrap; } .days button { flex: 1 0 36px; min-width: 36px; padding: 8px 0; }
 .days button[aria-pressed="true"] { background: var(--ink); color: var(--yellow); }
 .hug #hugBack { flex-basis: 100%; }
@@ -236,6 +250,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="status">
       <span>Food <span class="hearts" id="food">♡♡♡♡</span></span>
       <span>Joy <span class="hearts" id="joy">♡♡♡♡</span></span>
+      <span id="seedChip" hidden>🌻 <b id="seeds">0</b></span>
       <span id="wxChip" hidden></span>
     </div>
   </section>
@@ -380,6 +395,31 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="days" id="alarmDays" style="margin-top:8px"></div>
     <button class="btn dark wide" id="alarmSave" style="margin-top:10px">Save alarm</button>
     <p class="hint" id="alarmHint" style="margin-top:8px">At that time Okame sends you a good-morning message on Telegram, so it works even when the laptop is closed. If the laptop is open, Okame also pops up on its screen (from under the cover too, before it goes back to sleep until you uncover it).</p>
+  </section>
+
+  <section class="card panel-care" id="shopCard" hidden>
+    <h2>Bird shop <span class="new">NEW</span> <span class="jp">ことりやさん</span></h2>
+    <p class="hint">Okame earns seeds 🌻 by being looked after, playing games, the daily omikuji, focusing with you and its parties. Spend them here.</p>
+    <div class="row" style="justify-content:space-between"><b style="flex:0 0 auto">🌻 <span id="shopSeeds">0</span> seeds</b><small id="shopNote" style="flex:0 0 auto;opacity:.6"></small></div>
+    <div class="shop" id="shop"></div>
+    <label style="margin-top:12px">In the cage <span class="jp" style="font-size:11px;opacity:.7">おもちゃ</span></label>
+    <div class="shop" id="cage"></div>
+    <button class="btn dark wide" id="toyPlay" style="margin-top:10px">🎈 Play with the toy</button>
+  </section>
+
+  <section class="card panel-care" id="outCard" hidden>
+    <h2>Outings <span class="new">NEW</span> <span class="jp">おでかけ</span></h2>
+    <div class="away" id="awayNote" hidden></div>
+    <p class="hint" id="outHint">Send Okame out for an hour or so in the daytime. Nothing needs doing while it's away, and it comes home with a souvenir and a postcard for Telegram 📮</p>
+    <div class="places" id="places"></div>
+  </section>
+
+  <section class="card panel-care" id="familyCard" hidden>
+    <h2>Family <span class="new">NEW</span> <span class="jp">かぞく</span></h2>
+    <p class="hint" id="familyHint"></p>
+    <div class="album" id="album"></div>
+    <button class="btn wide" id="partnerBtn" hidden>💞 Find a partner…</button>
+    <p class="hint" id="partnerWarn" hidden></p>
   </section>
 
   <section class="card panel-care" id="friendsCard">
@@ -808,6 +848,7 @@ function applyState(s) {
   $("omikujiCard").hidden = s.stage === "egg" || s.stage === "gone";
   showWardrobe(s);
   showLife(s);
+  showWorld(s);
   showGame(s.game);
   $("nameCard").hidden = !!s.name || s.stage === "egg" || s.stage === "gone";
   $("setupBanner").hidden = !s.setup;
@@ -832,6 +873,7 @@ const CARE = [
 ];
 const RESULT_TEXT = {
   refused: { seed: "Not hungry right now.", default: "It doesn't want that now." },
+  away: { default: "Okame is out on an outing. Back soon! 🎒" },
   "not-needed": { bath: "The cage is already clean.", vet: "Healthy as can be!", default: "Not needed." },
   sleeping: { default: "Shh, it's sleeping. Uncover the cage first." },
 };
@@ -1089,6 +1131,120 @@ $("alarmSave").onclick = async () => {
   if (!r.ok) return toast("Couldn't save the alarm.");
   alarmDirty = false;
   toast(on ? `Alarm set for ${$("alarmTime").value} ⏰ おはよう！` : "Alarm off.");
+  refresh();
+};
+
+// ---------- Okame's world: the bird shop, the cage, outings and the family ----------
+const TOYS = [["toy_swing", "Swing", "ブランコ"], ["toy_bell", "Bell", "すず"], ["toy_mirror", "Mirror", "かがみ"],
+              ["toy_ladder", "Ladder", "はしご"], ["toy_perch", "Perch", "とまりぎ"]];
+const TOY_PRICE = [30, 20, 25, 30, 20], HAT_PRICE = 40, TREAT_PRICE = 5;
+const PLACES = [["pl_tree", "Park", "こうえん", 0], ["pl_cup", "Café", "カフェ", 0], ["umbrella", "Beach", "うみ", 7],
+                ["pl_torii", "Shrine", "じんじゃ", 7], ["pl_mill_body", "Windmill", "ふうしゃ", 14],
+                ["pl_frites", "Frietkot", "フリッツ", 14]];
+const PLACE_PHRASE = ["at the park 🌳", "at the café ☕", "at the beach 🏖️", "at the shrine ⛩️", "at the windmill 🌷", "at the frietkot 🍟"];
+function shopButton(icon, title, sub, onclick) {
+  const b = document.createElement("button");
+  b.className = "btn";
+  if (icon) b.append(spriteCanvas(icon, 4));
+  const l = document.createElement("span"); l.innerHTML = `${title}<small>${sub}</small>`;
+  b.append(l);
+  b.onclick = onclick;
+  return b;
+}
+async function buy(item, n, what) {
+  ac();
+  const r = await api("/api/shop/buy", { item, n });
+  if (!r.ok) return toast(r.error === "not enough seeds" ? "Not enough seeds yet 🌻 Play and care to earn more." : r.error === "not now" ? "Not now: Okame is asleep or out." : "Already got it!");
+  [0, 0.12, 0.24].forEach((t, i) => chirp(2100 + i * 300, t, 0.1));
+  toast(`${what}! 🌻 ${r.points} left`);
+  refresh();
+}
+let partnerArmed = 0;
+function showWorld(s) {
+  const h = s.home, alive = s.stage !== "egg" && s.stage !== "gone";
+  $("seedChip").hidden = !h;
+  ["shopCard", "outCard", "familyCard"].forEach((id) => $(id).hidden = !h);
+  if (!h) return;
+  $("seeds").textContent = h.points;
+  $("shopSeeds").textContent = h.points;
+  // The shop: a treat, the toys, and accessories not unlocked yet.
+  const items = [shopButton("ico_millet", "Honey stick", `🌻 ${TREAT_PRICE} · +1 food +1 joy`, () => buy("treat", 0, "A honey stick"))];
+  TOYS.forEach(([icon, en, jp], i) => {
+    const got = h.toys & (1 << i);
+    const b = shopButton(icon, `${en} <span class="jp" style="font-size:11px">${jp}</span>`, got ? "yours ✓" : `🌻 ${TOY_PRICE[i]}`, () => got ? toast("Already yours: pick it below.") : buy("toy", i, `A new ${en.toLowerCase()}`));
+    if (got) b.classList.add("owned");
+    items.push(b);
+  });
+  HATS.forEach(([key, label, icon], i) => {
+    if (!icon || i > 5 || (s.unlocked & (1 << i))) return;
+    items.push(shopButton(icon, label, `🌻 ${HAT_PRICE}`, () => buy("hat", i, `A new ${label.toLowerCase()}`)));
+  });
+  $("shop").replaceChildren(...items);
+  $("shopNote").textContent = `${h.toys ? "" : "toys make it happy when bored"}`;
+  const cage = [shopButton(null, "No toy", "an empty cage", async () => { await api("/api/cage", { toy: 0 }); refresh(); })];
+  if (!h.toy) cage[0].classList.add("placed");
+  TOYS.forEach(([icon, en, jp], i) => {
+    if (!(h.toys & (1 << i))) return;
+    const b = shopButton(icon, en, jp, async () => { await api("/api/cage", { toy: i + 1 }); happyChirp(); refresh(); });
+    if (h.toy === i + 1) b.classList.add("placed");
+    cage.push(b);
+  });
+  $("cage").replaceChildren(...cage);
+  $("toyPlay").hidden = !h.toy;
+  // Outings.
+  const out = h.away >= 0;
+  $("awayNote").hidden = !out;
+  if (out) $("awayNote").textContent = `🎒 ${s.name || "Okame"} is out ${PLACE_PHRASE[h.away]} · back in about ${h.backIn} min`;
+  $("places").replaceChildren(...PLACES.map(([icon, en, jp, min], i) => {
+    const been = h.souvenirs & (1 << i), young = (s.ageDays || 0) < min;
+    const sub = young ? `from ${min} days old` : been ? "souvenir ✓" : "not visited yet";
+    const b = shopButton(icon, `${en} <span class="jp" style="font-size:11px">${jp}</span>`, sub, async () => {
+      ac();
+      const r = await api("/api/outing", { place: i });
+      if (!r.ok) return toast(young ? `${en} is for birds ${min} days and older.` : out ? "Already out!" :
+        "Not now: only in the daytime (8:00-20:00), when it's well fed, happy and grown up.");
+      happyChirp(); toast(`Off to the ${en.toLowerCase()}! 🎒 Back in an hour or so.`); refresh();
+    });
+    b.disabled = out || young || !h.canGo[i];
+    return b;
+  }));
+  // The family album and the next generation.
+  $("album").replaceChildren(...h.family.slice().reverse().map((m) => {
+    const d = document.createElement("div");
+    d.className = "friend";
+    d.append(spriteCanvas((SPECIES[m.species] || SPECIES.cockatiel).sprite, 4));
+    const t = document.createElement("div");
+    t.innerHTML = `<b>${m.name.replace(/[<>&]/g, "")}${m.golden ? " ✨" : ""}</b><small>Generation ${m.gen + 1} · ${m.variant} ${(SPECIES[m.species] || SPECIES.cockatiel).en.toLowerCase()} · ${m.days} days</small><p>Lives in the family nest now, and drops by to visit.</p>`;
+    d.append(t);
+    return d;
+  }));
+  $("familyHint").textContent = h.partner ? "💞 A partner came to visit! Tomorrow morning there'll be an egg 🥚" :
+    h.family.length ? `${s.name || "Okame"} is generation ${h.generation + 1}.` :
+    "When a bird is 20 days old (or a wise old bird), it can find a partner. The next morning it leaves an egg and moves into the family nest; it still comes to visit, and its chick may take after it.";
+  $("partnerBtn").hidden = !h.canPartner || !alive;
+}
+$("toyPlay").onclick = async () => {
+  const r = await api("/api/toy-play", {});
+  if (!r.ok) return toast("Not now: Okame is busy, asleep or out.");
+  happyChirp(); toast("Look at the screen! 🎈");
+};
+$("partnerBtn").onclick = async () => {
+  const who = (state && state.name) || "your bird";
+  if (Date.now() - partnerArmed > 6000) {
+    partnerArmed = Date.now();
+    $("partnerBtn").textContent = "Tap again to find a partner";
+    $("partnerWarn").hidden = false;
+    $("partnerWarn").textContent = `A partner comes to visit today. Tomorrow morning ${who} leaves an egg and moves into the family album (it still visits now and then). The new chick starts from the beginning. This can't be undone.`;
+    setTimeout(() => { $("partnerBtn").textContent = "💞 Find a partner…"; $("partnerWarn").hidden = true; }, 6000);
+    return;
+  }
+  $("partnerBtn").textContent = "💞 Find a partner…";
+  $("partnerWarn").hidden = true;
+  const r = await api("/api/partner", {});
+  if (r.status === 401) { toast("Unlock Settings first (the code on Okame's screen), then try again."); document.querySelector('[data-tab="settings"]').click(); return; }
+  if (!r.ok) return toast("Not now: try when Okame is awake, at home and not busy.");
+  [0, 0.15, 0.3].forEach((t) => chirp(2400, t, 0.12));
+  toast("💞 Look at the screen! An egg comes tomorrow morning.");
   refresh();
 };
 

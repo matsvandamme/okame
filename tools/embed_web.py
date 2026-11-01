@@ -17,6 +17,10 @@ icons = {name: rows for name, rows in parse(ROOT / "assets" / "sprites" / "icons
 icons.update({name: rows for name, rows in parse(ROOT / "assets" / "sprites" / "friends.txt") if not name.startswith("fr_wing")})
 for sheet, want in (("bird.txt", "adult_idle"), ("budgie.txt", "budgie_adult_idle"), ("owl.txt", "owl_adult_idle")):
     icons.update({name: rows for name, rows in parse(ROOT / "assets" / "sprites" / sheet) if name == want})
+# The bird shop, the outings and the family album (0.7).
+icons.update({name: rows for name, rows in parse(ROOT / "assets" / "sprites" / "world.txt")
+              if name.startswith("toy_") or name in ("pl_tree", "pl_cup", "pl_torii", "pl_mill_body", "pl_frites")})
+icons.update({name: rows for name, rows in parse(ROOT / "assets" / "sprites" / "extras.txt") if name == "umbrella"})
 html = (ROOT / "web" / "index.html").read_text()
 html = html.replace("/*ICONS*/{}", json.dumps(icons, separators=(",", ":")))
 import hashlib

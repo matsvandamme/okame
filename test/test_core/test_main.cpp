@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <unity.h>
 #include "games.h"
 #include "pet.h"
@@ -760,6 +761,159 @@ void test_alarm_waits_for_a_busy_bird_and_never_repeats() {
   TEST_ASSERT_EQUAL(day, p.life().alarmDay);
 }
 
+
+// ---------------------------------------------------------------- 0.7: seeds, shop, toys, outings, family
+
+void test_seeds_from_care_capped_and_from_play() {
+  Pet p = adultAged(5);
+  uint32_t now = T0;
+  for (int i = 0; i < 15; i++) p.act(Action::Scritch, now + i);
+  TEST_ASSERT_EQUAL(10, p.home().points);  // ten a day from care
+  p.act(Action::Scritch, now + DAY);
+  TEST_ASSERT_EQUAL(11, p.home().points);  // a new day
+  p.recordGame(true, 0);
+  p.recordGame(false, 0);
+  TEST_ASSERT_EQUAL(17, p.home().points);
+  p.markParty(7);
+  p.markParty(7);
+  TEST_ASSERT_EQUAL(37, p.home().points);
+  TEST_ASSERT_EQUAL(Result::Ok, p.act(Action::Light, now + DAY));
+  TEST_ASSERT_EQUAL(37, p.home().points);  // covering the cage isn't care
+}
+
+void test_shop_toys_hats_and_treats() {
+  Pet p = adultAged(5);
+  TEST_ASSERT_EQUAL(-1, p.buyToy(TOY_BELL));
+  p.earn(100);
+  TEST_ASSERT_EQUAL(0, p.buyToy(TOY_BELL));
+  TEST_ASSERT_EQUAL(TOY_BELL + 1, p.home().toy);  // straight into the cage
+  TEST_ASSERT_EQUAL(-2, p.buyToy(TOY_BELL));
+  TEST_ASSERT_EQUAL(80, p.home().points);
+  TEST_ASSERT_EQUAL(0, p.buyHat(HAT_CROWN));
+  TEST_ASSERT_TRUE(p.wear(HAT_CROWN));
+  TEST_ASSERT_EQUAL(-2, p.buyHat(HAT_CROWN));
+  TEST_ASSERT_EQUAL(-3, p.buyHat(HAT_OMAMORI));  // earned only
+  TEST_ASSERT_FALSE(p.placeToy(TOY_SWING + 1));    // not bought
+  TEST_ASSERT_TRUE(p.placeToy(0));
+  PetState st = p.state();
+  st.happy = 1;
+  p.load(st);
+  TEST_ASSERT_EQUAL(0, p.buyTreat(T0));
+  TEST_ASSERT_EQUAL(2, p.state().happy);
+  TEST_ASSERT_EQUAL(35, p.home().points);
+  p.placeToy(TOY_BELL + 1);
+  TEST_ASSERT_TRUE(p.playToy(T0));
+  TEST_ASSERT_FALSE(p.playToy(T0 + 10 * MIN));  // once an hour
+  TEST_ASSERT_TRUE(p.playToy(T0 + HOUR));
+}
+
+void test_outing_pauses_home_and_brings_a_souvenir() {
+  Pet p = adultAged(8);
+  p.tick(T0);
+  TEST_ASSERT_FALSE(p.canGoOut(PLACE_WINDMILL, T0));  // 14 days old first
+  g_hour = 21;
+  TEST_ASSERT_FALSE(p.canGoOut(PLACE_PARK, T0));      // too late in the day
+  g_hour = 12;
+  TEST_ASSERT_TRUE(p.goOut(PLACE_BEACH, T0, 0));
+  TEST_ASSERT_TRUE(p.away(T0 + MIN));
+  TEST_ASSERT_EQUAL(Result::Away, p.act(Action::Seed, T0 + MIN));
+  TEST_ASSERT_FALSE(p.goOut(PLACE_PARK, T0 + MIN, 0));
+  uint8_t hunger = p.state().hunger;
+  p.tick(T0 + 59 * MIN);
+  TEST_ASSERT_EQUAL(hunger, p.state().hunger);       // time stands still for its hearts
+  TEST_ASSERT_EQUAL(-1, p.homeFrom());
+  p.tick(T0 + 61 * MIN);
+  TEST_ASSERT_FALSE(p.away(T0 + 61 * MIN));
+  TEST_ASSERT_EQUAL(PLACE_BEACH, p.homeFrom());
+  TEST_ASSERT_EQUAL(1 << PLACE_BEACH, p.home().souvenirs);
+  TEST_ASSERT_EQUAL(10, p.home().points);
+  p.greetedHome();
+  TEST_ASSERT_EQUAL(-1, p.homeFrom());
+  TEST_ASSERT_TRUE(p.canGoOut(PLACE_PARK, T0 + 62 * MIN));
+}
+
+void test_a_new_generation_keeps_the_family_and_the_home() {
+  Pet p = adultAged(10);
+  PetState st = p.state();
+  st.variant = Variant::Pied;
+  strcpy(st.name, "MANON");
+  p.load(st);
+  p.setSpecies(Species::Cockatiel);
+  p.earn(50);
+  TEST_ASSERT_FALSE(p.canFindPartner(T0));  // not before 20 days, or old age
+  st.born = T0 - 21 * DAY;
+  p.load(st);
+  TEST_ASSERT_TRUE(p.findPartner(T0, 100));
+  TEST_ASSERT_FALSE(p.eggDue(100));
+  TEST_ASSERT_TRUE(p.eggDue(101));  // the next morning
+  p.nextGeneration(T0 + DAY);
+  TEST_ASSERT_EQUAL(Stage::Egg, p.state().stage);
+  TEST_ASSERT_EQUAL(0, p.state().name[0]);
+  TEST_ASSERT_EQUAL(1, p.home().familyCount);
+  TEST_ASSERT_EQUAL_STRING("MANON", p.home().family[0].name);
+  TEST_ASSERT_EQUAL(uint8_t(Variant::Pied), p.home().family[0].variant);
+  TEST_ASSERT_EQUAL(22, p.home().family[0].days);
+  TEST_ASSERT_EQUAL(1, p.home().generation);
+  TEST_ASSERT_EQUAL(50, p.home().points);  // the home stays
+  TEST_ASSERT_EQUAL(0, p.home().partnerAt);
+  for (int i = 0; i < 8; i++) p.nextGeneration(T0 + 2 * DAY);
+  TEST_ASSERT_EQUAL(FAMILY_MAX, p.home().familyCount);  // the album keeps the latest birds
+  PetHome other{};
+  other.version = 9;
+  other.points = 5;
+  p.loadHome(other);
+  TEST_ASSERT_EQUAL(50, p.home().points);
+}
+
+
+void test_outing_on_screen_sends_one_postcard() {
+  Pet p = adultAged(10);
+  p.lifeMut().partyDays = 10;
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 13}, 11);
+  e.epoch = T0;
+  ui.update(e);
+  TEST_ASSERT_TRUE(ui.goOut(PLACE_PARK, e.nowMs));
+  for (int i = 0; i < 40; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_EQUAL(Screen::Main, ui.screen());
+  TEST_ASSERT_FALSE(ui.startGame(Ui::Game::Janken, e.nowMs));  // nobody home to play
+  TEST_ASSERT_FALSE(ui.showTrick(-1, e.nowMs));
+  e.epoch = T0 + 2 * HOUR;
+  p.tick(e.epoch);
+  int cards = 0;
+  for (int i = 0; i < 70; i++) {
+    e.nowMs += 100;
+    ui.update(e);
+    if (int c = ui.takePostcard()) { cards++; TEST_ASSERT_EQUAL(PLACE_PARK + 1, c); }
+  }
+  TEST_ASSERT_EQUAL(1, cards);
+  TEST_ASSERT_EQUAL(-1, p.homeFrom());
+  TEST_ASSERT_EQUAL(1 << PLACE_PARK, p.home().souvenirs);
+}
+
+void test_partner_then_an_egg_the_next_morning() {
+  Pet p = adultAged(21);
+  p.lifeMut().partyDays = 10;
+  PetState st = p.state();
+  strcpy(st.name, "MANON");
+  p.load(st);
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 13}, 15);
+  e.epoch = T0;
+  ui.update(e);
+  TEST_ASSERT_TRUE(p.findPartner(e.epoch, civil(e.today)));
+  ui.partnerVisit(e.nowMs);
+  for (int i = 0; i < 80; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_EQUAL(Stage::Adult, p.state().stage);  // not today
+  TEST_ASSERT_FALSE(ui.takeNewGeneration());
+  e.today = {2026, 11, 14};
+  e.hour = 9;
+  for (int i = 0; i < 3; i++) { e.nowMs += 100; ui.update(e); }
+  TEST_ASSERT_TRUE(ui.takeNewGeneration());
+  TEST_ASSERT_EQUAL(Stage::Egg, p.state().stage);
+  TEST_ASSERT_EQUAL_STRING("MANON", p.home().family[0].name);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_egg_hatches_after_two_minutes);
@@ -811,5 +965,11 @@ int main() {
   RUN_TEST(test_calm_no_shows_the_new_trick);
   RUN_TEST(test_life_belongs_to_its_egg_and_reveals_survive_a_reboot);
   RUN_TEST(test_alarm_waits_for_a_busy_bird_and_never_repeats);
+  RUN_TEST(test_seeds_from_care_capped_and_from_play);
+  RUN_TEST(test_shop_toys_hats_and_treats);
+  RUN_TEST(test_outing_pauses_home_and_brings_a_souvenir);
+  RUN_TEST(test_a_new_generation_keeps_the_family_and_the_home);
+  RUN_TEST(test_outing_on_screen_sends_one_postcard);
+  RUN_TEST(test_partner_then_an_egg_the_next_morning);
   return UNITY_END();
 }

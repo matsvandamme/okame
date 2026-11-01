@@ -10,7 +10,7 @@ enum class Species : uint8_t { Cockatiel, Budgie, Owl, Count };
 // Friends who drop in on Okame now and then. The pigeon brings Matthieu's notes and hugs.
 enum Friend : uint8_t { FRIEND_BUDGIE, FRIEND_PIGEON, FRIEND_ENAGA, FRIEND_MEJIRO, FRIEND_OWL, FRIEND_COUNT };
 enum class Action : uint8_t { Seed, Millet, Bath, Vet, Light, Scritch, GameWin, GameLose };
-enum class Result : uint8_t { Ok, Refused, NotNeeded, Sleeping };
+enum class Result : uint8_t { Ok, Refused, NotNeeded, Sleeping, Away };
 enum class Mood : uint8_t { Content, Meh, Sad, Sick, Asleep };
 
 namespace rules {
@@ -129,6 +129,34 @@ struct PetLife {
   uint8_t seniorShown, goldenShown;  // the reveal played (it waits for an awake bird on its main screen)
   int32_t alarmDay;               // civil day the alarm last greeted, so a reboot in that minute doesn't repeat it
   uint32_t eggStart;              // the egg this belongs to; another egg (say, after a rollback) starts fresh
+  // 0.7
+  struct Outing { uint8_t place, done; uint32_t start, back; } outing;  // place: Place + 1 (0 = home)
+  uint32_t toyAt;                 // last time it played with its toy (a little joy, once an hour)
+  uint32_t familyAt;              // last visit from the family
+};
+
+// 0.7: Okame's world. Things that belong to the home rather than to one bird, so they stay for the next egg:
+// seeds (points) and what they bought, souvenirs, and the family album. Own key ("pet5").
+enum Toy : uint8_t { TOY_SWING, TOY_BELL, TOY_MIRROR, TOY_LADDER, TOY_PERCH, TOY_COUNT };
+enum Place : uint8_t { PLACE_PARK, PLACE_CAFE, PLACE_BEACH, PLACE_SHRINE, PLACE_WINDMILL, PLACE_FRITES, PLACE_COUNT };
+constexpr uint16_t TOY_PRICE[TOY_COUNT] = {30, 20, 25, 30, 20};
+constexpr uint16_t HAT_PRICE = 40, TREAT_PRICE = 5;
+constexpr uint8_t PLACE_MIN_DAYS[PLACE_COUNT] = {0, 0, 7, 7, 14, 14};
+constexpr int FAMILY_MAX = 6;
+struct PetHome {
+  uint16_t version;
+  uint32_t points;                // seeds 🌻
+  int32_t careDay;                // day that carePoints counts (days since 1970, UTC)
+  uint8_t carePoints;             // seeds earned by care today (capped)
+  uint8_t toys;                   // bit per Toy owned
+  uint8_t toy;                    // the toy in the cage: Toy + 1, 0 = none
+  uint8_t souvenirs;              // bit per Place visited
+  uint8_t generation;             // 0 for the first bird
+  uint32_t partnerAt;             // a partner came (the egg comes the next morning); 0 = none
+  int32_t partnerDay;             // the local day it came
+  uint8_t inherit;                // the parent's look for the next adult: Variant + 1, +8 if it was golden
+  uint8_t familyCount;
+  struct Member { char name[13]; uint8_t species, variant, golden, generation; uint16_t days; } family[FAMILY_MAX];
 };
 
 class Pet {
@@ -207,13 +235,46 @@ class Pet {
   int pickTrick(uint32_t rnd) const;  // a known trick, or -1
   // The highest age milestone reached but not celebrated yet (days), or 0. markParty() once it has played.
   uint16_t partyDue(uint32_t now) const;
-  void markParty(uint16_t days) { if (days > l_.partyDays) l_.partyDays = days; }
+  void markParty(uint16_t days) {
+    if (days <= l_.partyDays) return;
+    l_.partyDays = days;
+    earn(20);
+  }
   bool senior() const { return l_.senior; }
   bool golden() const { return l_.golden; }
   void recordLeftRight(int hits);
 
+  // 0.7 additions (see PetHome).
+  static constexpr uint16_t HOME_VERSION = 1;
+  static constexpr uint8_t CARE_POINTS_PER_DAY = 10;
+  static constexpr uint32_t TOY_COOLDOWN = rules::HOUR;
+  const PetHome& home() const { return h_; }
+  PetHome& homeMut() { return h_; }
+  void loadHome(const PetHome& h);
+  void earn(uint32_t n) { h_.points = h_.points + n > 99999 ? 99999 : h_.points + n; }
+  // The bird shop. 0 bought, -1 not enough seeds, -2 already have it, -3 not for sale (or not now).
+  int buyTreat(uint32_t now);
+  int buyToy(uint8_t toy);
+  int buyHat(uint8_t hat);
+  bool placeToy(uint8_t toy);  // Toy + 1, 0 takes it out
+  bool playToy(uint32_t now);  // true when it cheered the bird up (once an hour)
+  // Outings (おでかけ). Only a content, awake grown-up goes out, in the daytime; it's back in 60-90 minutes with a
+  // souvenir. While it's away nothing needs doing, and time stands still for its hearts.
+  bool canGoOut(uint8_t place, uint32_t now) const;
+  bool goOut(uint8_t place, uint32_t now, uint32_t rnd);
+  bool away(uint32_t now) const { return l_.outing.place && !l_.outing.done && now < l_.outing.back; }
+  int homeFrom() const { return l_.outing.place && l_.outing.done ? l_.outing.place - 1 : -1; }  // back, not greeted
+  void greetedHome() { l_.outing = {}; }
+  // Generations. Opt-in only: a grown bird meets a partner; the next morning it leaves an egg and moves into the
+  // family album. The new egg is the same kind, and may take after its parent.
+  bool canFindPartner(uint32_t now) const;
+  bool findPartner(uint32_t now, int32_t today);
+  bool eggDue(int32_t today) const { return h_.partnerAt && today > h_.partnerDay; }
+  void nextGeneration(uint32_t now);
+
  private:
   void step(uint32_t now, uint32_t dt);
+  Result doAct(Action a, uint32_t now);
   void grow(uint32_t now);
   uint16_t baseWeight() const;
   void unlock(uint8_t a);
@@ -223,5 +284,6 @@ class Pet {
   PetExtra x_{};
   PetBirds b_{BIRDS_VERSION, 0, 0, {}, 0, 0, 0};
   PetLife l_{LIFE_VERSION};
+  PetHome h_{HOME_VERSION};
   HourFn hour_;
 };

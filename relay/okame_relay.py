@@ -395,6 +395,11 @@ def status_caption():
     name = esc(s.get("name")) or "Okame"
     life = s.get("life") or {}
     wise = " · ✨ golden" if life.get("golden") else " · 🍵 wise old bird" if life.get("senior") else ""
+    home = s.get("home") or {}
+    if isinstance(home.get("away"), int) and 0 <= home["away"] < len(PLACES):
+        wise += f"\n🎒 out {PLACES[home['away']][1]} (back in ~{home.get('backIn', 0)} min)"
+    if "points" in home:
+        wise += f"\n🌻 {home['points']} seeds"
     return (f"<b>{name}</b> · {s.get('stage')} · {s.get('ageDays', 0)}d · {s.get('weight', 0)}g{wise}\n"
             f"Food {hearts(s.get('hunger'))}\nJoy  {hearts(s.get('happy'))}\n"
             f"Mood: {s.get('mood')}{' · 🤒 sick' if s.get('sick') else ''}{' · 💩' * int(s.get('poop') or 0)}\n{seen}")
@@ -404,7 +409,8 @@ CARE = {"feed": ("seed", "Crunch crunch 🌻"), "treat": ("millet", "Millet!! My
         "bath": ("bath", "Splish splash 🛁"), "vet": ("vet", "Off to the vet 🩺"),
         "scritch": ("scritch", "Head scritches… *melts* 🥰"), "cover": ("light", "Lights… 🌙")}
 RESULT_TEXT = {"refused": "…but it isn't hungry right now 🙅", "not-needed": "…not needed, all good! ✨",
-               "sleeping": "…shh, the cage is covered. Uncover it first 🌙"}
+               "sleeping": "…shh, the cage is covered. Uncover it first 🌙",
+               "away": "…but I'm out on an outing 🎒 Back soon!"}
 HELP = ("<b>オカメ Okame</b>, your pocket bird 🐦💛\n\n"
         "<b>Look after me</b>\n/status how I'm doing · /photo my screen\n/feed /treat /bath /vet /scritch /cover\n\n"
         "<b>Make my screen sparkle</b>\n/note &lt;text&gt; a love note on my screen 💌\n/hug a big hug on my screen 🤗\n/home &lt;date&gt; count down the days until you're home 🚢\n"
@@ -447,6 +453,8 @@ async def handle(msg):
         return await home_cmd(chat, name, arg)
     if cmd == "/update":
         return await update_cmd(chat)
+    if cmd == "/seeds":
+        return await seeds_cmd(chat, arg)
     if cmd == "/trick":
         if not egg_has(V06):
             return await say(chat, UPDATE_FIRST)
@@ -572,7 +580,8 @@ async def telegram_loop():
         {"command": "help", "description": "Everything Okame can do"}]
     await tg("setMyCommands", commands=commands)
     for chat in CFG.get("partner_chats", []):  # Matthieu's menu also has the update button; Haruki's stays simple
-        await tg("setMyCommands", commands=commands + [{"command": "update", "description": "Install new firmware now 🪶"}],
+        await tg("setMyCommands", commands=commands + [{"command": "seeds", "description": "Send seeds for the bird shop 🌻"},
+                                                       {"command": "update", "description": "Install new firmware now 🪶"}],
                  scope={"type": "chat", "chat_id": chat})
     await tg("setMyShortDescription", short_description="Okame オカメ, a pocket bird living on a little pixel screen 🐦💛")
     await tg("setMyDescription", description="ピヨ! I'm Okame, a tiny bird who lives on a little screen next to "
@@ -716,6 +725,7 @@ V04 = (0, 4, 0)  # hug, words, countdown, weather, dates, rival: older eggs answ
 V05 = (0, 5, 0)  # visiting friends, the pigeon post, budgie and owl eggs
 V051 = (0, 5, 1)  # /update: check GitHub for a signed release now
 V06 = (0, 6, 0)  # tricks, age parties, old age and the golden form, the alarm
+V07 = (0, 7, 0)  # seeds and the bird shop, toys, outings with postcards, the family album
 UPDATE_FIRST = "My little screen needs an update before I can do that 🛠️ ピヨ"
 
 
@@ -1095,6 +1105,60 @@ async def friend_met(e):
         await show(u["chat_id"], FRIEND_NEWS[i])
 
 
+PLACES = [("🌳", "at the park", "THE PARK"), ("☕", "at the café", "THE CAFE"), ("🏖️", "at the beach", "THE BEACH"),
+          ("⛩️", "at the shrine", "THE SHRINE"), ("🌷", "at the windmill", "THE WINDMILL"),
+          ("🍟", "at the frietkot", "THE FRIETKOT")]
+
+
+async def outing(e):
+    """Back from an outing: the egg sends the postcard it showed on its screen; both of them get it."""
+    i = int(e.get("place", -1))
+    frame = str(e.get("frame", ""))
+    if not 0 <= i < len(PLACES) or len(frame) != 200:
+        return
+    emoji, where, label = PLACES[i]
+    name = esc(device["state"].get("name")) or "Okame"
+    event(name, f"went out {where}")
+    for u in users():
+        await show(u["chat_id"], f"📮 Greetings from {where[3:]}! {emoji} {name} is home again, with a souvenir ピヨ",
+                   frame=frame, label=f"FROM {label}")
+
+
+async def partner_came(e):
+    name = esc(device["state"].get("name")) or "Okame"
+    event(name, "met a partner")
+    for u in users():
+        await show(u["chat_id"], f"💞 A partner came to visit <b>{name}</b>! Tomorrow morning there'll be an egg 🥚")
+
+
+async def family(e):
+    name = esc(str(e.get("name") or "Okame").title())
+    gen = int(e.get("gen") or 1)
+    event(name, f"left an egg; generation {gen + 1} begins")
+    for u in users():
+        await show(u["chat_id"], f"🥚 <b>{name}</b> left an egg! {name} has moved into the family nest and will come to "
+                                 f"visit now and then. Generation {gen + 1} starts now 💛 Give the chick a name on my page.")
+
+
+async def seeds_cmd(chat, arg):
+    """A present of seeds (🌻) for the bird shop, from the ship: at most 20 a day."""
+    if not egg_has(V07):
+        return await say(chat, UPDATE_FIRST)
+    try:
+        n = int(arg.split()[0]) if arg else 10
+    except ValueError:
+        return await say(chat, "How many? e.g. <code>/seeds 10</code> 🌻")
+    today = datetime.now(TZ).date().isoformat()
+    given = kv_get("seeds_given", {})
+    left = 20 - (given.get("n", 0) if given.get("day") == today else 0)
+    if n < 1 or left <= 0:
+        return await say(chat, "That's enough seeds for today 🌻 ピヨ (20 a day)")
+    n = min(n, left)
+    kv_set("seeds_given", {"day": today, "n": 20 - left + n})
+    enqueue("seeds", {"n": n}, chat)
+    return await say(chat, f"🌻 {n} seeds on their way for the bird shop! Haruki can spend them on toys and treats.")
+
+
 async def party(e):
     """An age milestone (7, 10, 30… days): a little party on the screen, and both of them hear about it."""
     d = int(e.get("days") or 0)
@@ -1150,7 +1214,7 @@ async def alarms(now):
 
 EVENT_HANDLERS = {"love": love_tapped, "omikuji": omikuji_drawn, "focus": focus_done, "rain": rain_record,
                   "friend": friend_met, "party": party, "senior": grew_wise, "golden": grew_wise,
-                  "alarm_set": alarm_event}
+                  "alarm_set": alarm_event, "outing": outing, "partner": partner_came, "family": family}
 async def weather_now():
     await send_weather(force=True)
 
@@ -1190,6 +1254,16 @@ WHATS_NEW_06_HARUKI = (
     "⏰ a clock and a wake-up alarm: I'll send you a good morning here on Telegram")
 
 
+WHATS_NEW_07 = (
+    "✨ <b>I updated myself again!</b> ピヨ My little world got bigger:\n\n"
+    "🌻 I earn seeds now (care, games, omikuji, focus, parties) to spend in a <b>bird shop</b> on my page: "
+    "treats, toys for my cage (a swing, a bell, a mirror…) and accessories\n"
+    "🎒 <b>outings</b>: send me to the park, a café, the beach, a shrine, a windmill or a frietkot. "
+    "I'll send you a postcard 📮\n"
+    "💞 and one day, a <b>family</b>: a grown bird can find a partner and leave an egg. "
+    "It moves into the family album and comes to visit.")
+
+
 async def whats_new():
     ids = {p["chat_id"] for p in partners()}
     if not kv_get("whats_new_0.4"):
@@ -1200,6 +1274,10 @@ async def whats_new():
         kv_set("whats_new_0.5", time.time())
         for u in users():
             await say(u["chat_id"], WHATS_NEW_05)
+    if egg_has(V07) and not kv_get("whats_new_0.7"):
+        kv_set("whats_new_0.7", time.time())
+        for u in users():
+            await say(u["chat_id"], WHATS_NEW_07 + ("\n\nSend seeds from the ship with /seeds 10 🌻" if u["chat_id"] in ids else ""))
     if egg_has(V06) and not kv_get("whats_new_0.6"):
         kv_set("whats_new_0.6", time.time())
         for u in users():

@@ -30,7 +30,8 @@ enum class Screen : uint8_t {
 enum class Anim : uint8_t {
   Hatch, Seed, Millet, Bath, Vet, Refused, NotNeeded, Scritch, Greet, Visitor, Whistle,
   GameWin, GameLose, Sleeping, Gift, Love, Hug, Countdown, HomeDay, Omikuji, Occasion, FocusDone, Friend,
-  Calm, Trick, Party, Senior, Golden, Wake
+  Calm, Trick, Party, Senior, Golden, Wake,
+  Leave, Home, Toy, Partner, NewEgg, Family
 };
 
 // Weather where Haruki is, from the relay.
@@ -113,7 +114,15 @@ class Ui {
   // A trick on request (from the page or Telegram); trick < 0 picks a known one. False when it knows none or is busy.
   bool showTrick(int trick, uint32_t nowMs);
   // Something from the page or Telegram may play now: the main screen, or an animation that isn't a once-only moment.
-  bool canReact() const { return screen_ == Screen::Main || (screen_ == Screen::Anim && !onceKind(anim_)); }
+  bool canReact() const {
+    return !pet_.away(epoch_) && (screen_ == Screen::Main || (screen_ == Screen::Anim && !onceKind(anim_)));
+  }
+  // 0.7. Off on an outing (the bird waves and walks off); false if it can't go now.
+  bool goOut(int place, uint32_t nowMs);
+  bool playWithToy(uint32_t nowMs);   // the toy in the cage, now
+  bool partnerVisit(uint32_t nowMs);  // a partner came (Pet::findPartner): hearts; the egg comes tomorrow
+  int takePostcard() { int p = postcardOut_; postcardOut_ = 0; return p; }  // Place + 1: the frame is the postcard
+  bool takeNewGeneration() { bool g = generationOut_; generationOut_ = false; return g; }
   // The clock, for a few seconds (from the page).
   bool showClock(uint32_t nowMs);
   int takeParty() { int d = partyOut_; partyOut_ = 0; return d; }              // an age party just played (days)
@@ -182,7 +191,8 @@ class Ui {
   // 0.6
   static bool onceKind(Anim a) {
     return a == Anim::Hatch || a == Anim::Countdown || a == Anim::HomeDay || a == Anim::Occasion || a == Anim::Party ||
-           a == Anim::Senior || a == Anim::Golden;
+           a == Anim::Senior || a == Anim::Golden || a == Anim::Home || a == Anim::Partner || a == Anim::NewEgg ||
+           a == Anim::Leave;
   }
   uint32_t animMs() const;
   void maybeLife(const Env& env);
@@ -193,6 +203,16 @@ class Ui {
   void drawLeftRight(const Env& env);
   void drawClock(const Env& env);
   void drawTime(const Env& env, int y, bool on);
+  // 0.7
+  void drawAs(uint8_t species, Variant v, bool golden, Pose pose, int x, int y, bool flip);
+  void drawToyInCage(uint32_t nowMs);
+  void drawAway(const Env& env);
+  void drawPlace(int place, uint32_t el);
+  void drawWorldAnim(const Env& env, uint32_t el);
+  int toyW() const;
+  int place_ = 0, family_ = 0, postcardOut_ = 0;
+  bool postcardTaken_ = false, generationOut_ = false;
+  uint32_t nextToy_ = 0, nextFamily_ = 0;
   LeftRight lr_;
   int trick_ = 0, pendingTrick_ = -1, partyDays_ = 0, partyOut_ = 0, milestoneOut_ = 0;
   bool newTrick_ = false;

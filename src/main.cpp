@@ -69,6 +69,7 @@ void save() {
   storage::saveExtra(app::pet.extra());
   storage::saveBirds(app::pet.birds());
   storage::saveLife(app::pet.life());
+  storage::saveHome(app::pet.home());
   if (clockTrusted()) storage::setLastEpoch(app::epoch());
   lastSave = millis();
   saveWanted = false;
@@ -211,6 +212,7 @@ void setup() {
   storage::loadExtra(app::pet);
   storage::loadBirds(app::pet);
   storage::loadLife(app::pet);
+  storage::loadHome(app::pet);
 
   net::begin();
   web::begin();
@@ -260,6 +262,15 @@ void loop() {
     if (int f = app::ui.takeNewFriend(); f >= 0) cloud::event(String("{\"type\":\"friend\",\"id\":") + f + "}");
     if (int d = app::ui.takeParty()) cloud::event(String("{\"type\":\"party\",\"days\":") + d + "}");
     if (int m = app::ui.takeMilestone()) cloud::event(m == 2 ? "{\"type\":\"golden\"}" : "{\"type\":\"senior\"}");
+    if (app::ui.takeNewGeneration()) {
+      const PetHome& h = app::pet.home();
+      const PetHome::Member& m = h.family[h.familyCount - 1];
+      String name = m.name;
+      name.replace("\\", "");
+      name.replace("\"", "");
+      cloud::event(String("{\"type\":\"family\",\"name\":\"") + name + "\",\"gen\":" + h.generation +
+                   ",\"days\":" + m.days + "}");
+    }
 
     // A learned tune gets whistled now and then while the bird is awake and content.
     const PetState& s = app::pet.state();
@@ -274,6 +285,11 @@ void loop() {
 
     uint8_t packed[LCD_W * LCD_H / 8];
     app::ui.frame().pack(packed);
+    if (int p = app::ui.takePostcard()) {  // this frame is the postcard from an outing
+      char hex[201];
+      for (int i = 0; i < 100; i++) sprintf(hex + i * 2, "%02x", packed[i]);
+      cloud::event(String("{\"type\":\"outing\",\"place\":") + (p - 1) + ",\"frame\":\"" + hex + "\"}");
+    }
     if (memcmp(packed, lastPacked, sizeof packed)) {
       memcpy(lastPacked, packed, sizeof packed);
       renderRgb565(app::ui.frame(), pixels);

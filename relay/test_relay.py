@@ -262,5 +262,35 @@ async def t_life():
     check("the status shows golden", "golden" in r.status_caption())
 TESTS.append(t_life)
 
+
+async def t_world():
+    sent.clear()
+    r.device["state"] = {"fw": "0.6.0", "name": "Manon"}
+    await r.handle(msg(MATTHIEU, "/seeds 10"))
+    check("/seeds on 0.6 asks for an update", "update" in said(MATTHIEU)[-1] and not queued("seeds"))
+    r.device["state"] = {"fw": "0.7.0-dev", "name": "Manon", "stage": "adult",
+                         "home": {"points": 46, "away": 2, "backIn": 30}}
+    await r.handle(msg(MATTHIEU, "/seeds 15"))
+    await r.handle(msg(MATTHIEU, "/seeds 15"))
+    await r.handle(msg(MATTHIEU, "/seeds 5"))
+    check("seeds are capped at 20 a day", [q["n"] for q in queued("seeds")] == [15, 5] and "enough" in said(MATTHIEU)[-1])
+    check("the status shows seeds and the outing", "46 seeds" in r.status_caption() and "beach" in r.status_caption())
+    sent.clear()
+    await r.on_event({"type": "outing", "place": 2, "frame": "0" * 200})
+    check("a postcard reaches both", any("Greetings from the beach" in x for x in said(HARUKI))
+          and any("Greetings from the beach" in x for x in said(MATTHIEU)))
+    sent.clear()
+    await r.on_event({"type": "outing", "place": 9, "frame": "0" * 200})
+    await r.on_event({"type": "outing", "place": 1, "frame": "zz"})
+    check("a broken postcard is ignored", not sent)
+    await r.on_event({"type": "family", "name": "MANON", "gen": 1, "days": 41})
+    check("a new generation reaches both", any("Generation 2" in x and "Manon" in x for x in said(HARUKI)))
+    sent.clear()
+    await r.whats_new()
+    await r.whats_new()
+    check("what's new 0.7: once each, seeds for Matthieu", sum("bird shop" in x for x in said(HARUKI)) == 1
+          and sum("/seeds" in x for x in said(MATTHIEU)) == 1 and not any("/seeds" in x for x in said(HARUKI)))
+TESTS.append(t_world)
+
 if __name__ == "__main__":
     asyncio.run(main())

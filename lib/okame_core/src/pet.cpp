@@ -87,10 +87,16 @@ void Pet::grow(uint32_t now) {
       s_.variant = Variant::Grey;
     else
       s_.variant = Variant::Scruffy;
+    // Half the time a well-kept bird takes after its parent's pearl or pied feathers.
+    Variant pv = Variant((h_.inherit & 7) - 1);
+    if ((h_.inherit & 7) && s_.mistakes <= 6 && (pv == Variant::Pearl || pv == Variant::Pied) && (s_.eggStart / 60) % 2)
+      s_.variant = pv;
   } else if (s_.stage == Stage::Adult && !l_.senior && ageSeconds(now) >= SENIOR_AT) {
     // A cosy old age. A bird that was cared for almost perfectly as an adult turns golden (lutino): the secret form.
     l_.senior = 1;
-    if (s_.mistakes - l_.adultMistakes <= 1 && s_.affection >= 200) l_.golden = 1;
+    // A golden parent makes it easier.
+    bool goldParent = h_.inherit & 8;
+    if (s_.mistakes - l_.adultMistakes <= (goldParent ? 3 : 1) && s_.affection >= (goldParent ? 150 : 200)) l_.golden = 1;
   }
 }
 
@@ -103,6 +109,15 @@ void Pet::step(uint32_t now, uint32_t dt) {
   }
   grow(now);
   if (s_.stage == Stage::Egg || s_.stage == Stage::Gone) return;
+  if (l_.outing.place && !l_.outing.done) {
+    if (now < l_.outing.back) return;  // out and about: nothing changes at home
+    l_.outing.done = 1;                // back, with a souvenir and a little extra joy
+    l_.outing.back = now;
+    h_.souvenirs |= 1 << (l_.outing.place - 1);
+    earn(10);
+    s_.happy = inc(s_.happy, MAX_STAT);
+    s_.hungerT = s_.happyT = 0;
+  }
 
   bool night = isNight(now);
   uint32_t hungerEvery = night ? HUNGER_EVERY * 2 : HUNGER_EVERY;
@@ -160,6 +175,23 @@ void Pet::step(uint32_t now, uint32_t dt) {
 }
 
 Result Pet::act(Action a, uint32_t now) {
+  if (away(now)) return Result::Away;
+  Result r = doAct(a, now);
+  if (r == Result::Ok && a != Action::Light && a != Action::GameWin && a != Action::GameLose) {
+    int32_t day = (int32_t)(now / DAY);  // a seed for each bit of care, ten a day
+    if (h_.careDay != day) {
+      h_.careDay = day;
+      h_.carePoints = 0;
+    }
+    if (h_.carePoints < CARE_POINTS_PER_DAY) {
+      h_.carePoints++;
+      earn(1);
+    }
+  }
+  return r;
+}
+
+Result Pet::doAct(Action a, uint32_t now) {
   if (s_.stage == Stage::Egg || s_.stage == Stage::Gone) return Result::Refused;
   if (a != Action::GameWin && a != Action::GameLose && ++s_.careCount >= 20) unlock(HAT_BERET);
   if (a == Action::Scritch) unlock(HAT_BOW);
@@ -232,7 +264,7 @@ bool Pet::practiceTune(uint32_t now) {
 }
 
 bool Pet::needsAttention(uint32_t now) const {
-  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone) return false;
+  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone || away(now)) return false;
   return s_.hunger == 0 || s_.happy == 0 || s_.poop >= 2 || s_.sick ||
          (isNight(now) && !s_.lightsOff);
 }
@@ -286,6 +318,7 @@ int Pet::openGift(uint32_t now, uint32_t rnd) {
 }
 
 void Pet::recordGame(bool won, int rainScore) {
+  earn(won ? 5 : 1);
   if (won) s_.gamesWon++;
   if (rainScore > s_.bestRain) s_.bestRain = rainScore;
   if (s_.gamesWon >= 3) unlock(HAT_CROWN);
@@ -372,6 +405,7 @@ int Pet::drawOmikuji(int32_t today, uint32_t rnd) {
   x_.omikujiDay = today;
   x_.omikujiGrade = g;
   x_.omikujiSeen |= 1u << g;
+  earn(3);
   if (x_.omikujiSeen == 0x3f) unlock(HAT_OMAMORI);
   if (g == 0) s_.happy = inc(s_.happy, MAX_STAT);
   return g;
@@ -388,6 +422,7 @@ void Pet::recordJanken(bool won) {
 }
 
 void Pet::recordFocus() {
+  earn(5);
   x_.focusCount++;
   if (x_.focusCount % 10 == 0) unlock(HAT_HACHIMAKI);
   if (s_.affection < 1000) s_.affection += 5;
@@ -429,7 +464,8 @@ void Pet::loadLife(const PetLife& l) {
 }
 
 bool Pet::maybeFuss(uint32_t now, int32_t today, uint32_t rnd) {
-  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone || asleep(now) || s_.lightsOff || s_.sick) return false;
+  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone || asleep(now) || s_.lightsOff || s_.sick || away(now))
+    return false;
   if (s_.hunger < 2 || s_.happy < 2 || s_.poop >= 2) return false;  // only when every need is met
   if (l_.fussAt && now - l_.fussAt < FUSS_LASTS) return false;
   l_.fussAt = 0;  // an ignored fuss just fades: never a care mistake
@@ -494,4 +530,104 @@ uint16_t Pet::partyDue(uint32_t now) const {
 void Pet::recordLeftRight(int hits) {
   if (hits > l_.lrBest) l_.lrBest = hits;
   recordGame(hits >= 3, 0);
+}
+
+// ---------------------------------------------------------------- 0.7 additions
+
+void Pet::loadHome(const PetHome& h) {
+  if (h.version != HOME_VERSION) return;
+  h_ = h;
+  if (h_.familyCount > FAMILY_MAX) h_.familyCount = FAMILY_MAX;
+  for (auto& m : h_.family) m.name[sizeof m.name - 1] = 0;
+  h_.toys &= (1 << TOY_COUNT) - 1;
+  if (h_.toy > TOY_COUNT || (h_.toy && !(h_.toys & (1 << (h_.toy - 1))))) h_.toy = 0;
+}
+
+int Pet::buyTreat(uint32_t now) {
+  if (s_.stage == Stage::Egg || s_.stage == Stage::Gone || s_.lightsOff || away(now)) return -3;
+  if (h_.points < TREAT_PRICE) return -1;
+  h_.points -= TREAT_PRICE;
+  s_.happy = inc(s_.happy, MAX_STAT);
+  s_.hunger = inc(s_.hunger, MAX_STAT);
+  return 0;
+}
+
+int Pet::buyToy(uint8_t toy) {
+  if (toy >= TOY_COUNT) return -3;
+  if (h_.toys & (1 << toy)) return -2;
+  if (h_.points < TOY_PRICE[toy]) return -1;
+  h_.points -= TOY_PRICE[toy];
+  h_.toys |= 1 << toy;
+  if (!h_.toy) h_.toy = toy + 1;  // straight into the cage
+  return 0;
+}
+
+int Pet::buyHat(uint8_t hat) {
+  if (hat == HAT_NONE || hat >= HAT_GIFTABLE) return -3;  // the earned-only charms aren't for sale
+  if (s_.unlocked & (1u << hat)) return -2;
+  if (h_.points < HAT_PRICE) return -1;
+  h_.points -= HAT_PRICE;
+  unlock(hat);
+  return 0;
+}
+
+bool Pet::placeToy(uint8_t toy) {
+  if (toy && (toy > TOY_COUNT || !(h_.toys & (1 << (toy - 1))))) return false;
+  h_.toy = toy;
+  return true;
+}
+
+bool Pet::playToy(uint32_t now) {
+  if (!h_.toy || (l_.toyAt && now - l_.toyAt < TOY_COOLDOWN)) return false;
+  l_.toyAt = now;
+  s_.happy = inc(s_.happy, MAX_STAT);
+  return true;
+}
+
+bool Pet::canGoOut(uint8_t place, uint32_t now) const {
+  if (place >= PLACE_COUNT || s_.stage != Stage::Adult || l_.outing.place) return false;
+  if (asleep(now) || s_.lightsOff || s_.sick || s_.hunger < 2 || s_.happy < 2) return false;
+  int h = hour_(now);
+  if (h < NIGHT_TO || h >= 20) return false;  // home well before bedtime
+  return ageSeconds(now) / DAY >= PLACE_MIN_DAYS[place];
+}
+
+bool Pet::goOut(uint8_t place, uint32_t now, uint32_t rnd) {
+  if (!canGoOut(place, now)) return false;
+  l_.outing = {uint8_t(place + 1), 0, now, now + (60 + rnd % 31) * MIN};
+  l_.fussAt = 0;
+  return true;
+}
+
+bool Pet::canFindPartner(uint32_t now) const {
+  return s_.stage == Stage::Adult && !h_.partnerAt && !away(now) && (l_.senior || ageSeconds(now) >= 20 * DAY);
+}
+
+bool Pet::findPartner(uint32_t now, int32_t today) {
+  if (!canFindPartner(now)) return false;
+  h_.partnerAt = now ? now : 1;
+  h_.partnerDay = today;
+  return true;
+}
+
+// The parent moves into the family album (it still visits now and then) and a new egg of the same kind starts.
+void Pet::nextGeneration(uint32_t now) {
+  if (h_.familyCount >= FAMILY_MAX) {  // the album keeps the most recent birds
+    memmove(&h_.family[0], &h_.family[1], sizeof h_.family[0] * (FAMILY_MAX - 1));
+    h_.familyCount = FAMILY_MAX - 1;
+  }
+  PetHome::Member& m = h_.family[h_.familyCount++];
+  memset(&m, 0, sizeof m);
+  strncpy(m.name, s_.name[0] ? s_.name : "OKAME", sizeof m.name - 1);
+  m.species = b_.species;
+  m.variant = uint8_t(s_.variant);
+  m.golden = l_.golden;
+  m.generation = h_.generation;
+  uint32_t days = ageSeconds(now) / DAY;
+  m.days = days > 0xffff ? 0xffff : days;
+  h_.inherit = uint8_t(uint8_t(s_.variant) + 1) | (l_.golden ? 8 : 0);
+  h_.generation++;
+  h_.partnerAt = 0;
+  h_.partnerDay = 0;
+  reset(now);
 }

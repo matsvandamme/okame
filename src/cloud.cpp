@@ -252,6 +252,11 @@ void apply(JsonDocument& cmd, const String& raw) {
     app::pet.extraMut().rivalRain = cmd["score"] | 0;
     app::requestSave();
     ack(id, "ok");
+  } else if (type == "seeds") {  // Matthieu's /seeds: a present of seeds for the bird shop
+    int n = cmd["n"] | 0;
+    if (n > 0 && n <= 50) app::pet.earn(n);
+    app::requestSave();
+    ack(id, "ok");
   } else if (type == "trick") {  // Telegram /trick
     bool ok = app::ui.showTrick(-1, now);
     ack(id, ok ? "shown" : app::pet.trickCount() ? "busy" : "none");
