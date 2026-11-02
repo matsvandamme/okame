@@ -905,7 +905,7 @@ async def sync(request):
         cmds = pending()
     for c in cmds:
         db.execute("update queue set delivered=? where id=?", (time.time(), c["id"]))
-    maxid = db.execute("select coalesce(max(id), 0) from queue").fetchone()[0]  # lets the egg notice a restored db
+    maxid = (db.execute("select seq from sqlite_sequence where name='queue'").fetchone() or [0])[0]  # a restored db shows
     return web.json_response({"commands": cmds, "now": int(time.time()), "maxid": int(maxid)})
 
 

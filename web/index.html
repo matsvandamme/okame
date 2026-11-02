@@ -116,7 +116,7 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .away { font-weight: 800; background: #fff; border: 3px solid var(--ink); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
 .album { display: grid; gap: 8px; margin: 8px 0; }
 .album .friend canvas { width: 54px !important; }
-.days { display: flex; gap: 4px; flex-wrap: wrap; } .days button { flex: 1 0 38px; min-width: 38px; min-height: 44px; padding: 8px 0; }
+.days { display: flex; gap: 4px; flex-wrap: wrap; } .days button { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 8px 0; }
 .days button[aria-pressed="true"] { background: var(--ink); color: var(--yellow); }
 .hug #hugBack { flex-basis: 100%; }
 .hug small { display: block; opacity: .65; font-weight: 700; }
@@ -311,8 +311,8 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 
   <nav class="tabs" role="tablist" aria-label="Sections">
     <button class="tab" role="tab" aria-selected="true" data-tab="care" aria-controls="tab-care">Care<span class="jp" lang="ja">おせわ</span></button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="play" aria-controls="playCard">Play<span class="jp" lang="ja">あそぶ</span></button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="world" aria-controls="shopCard">World<span class="jp" lang="ja">せかい</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="play" aria-controls="playCard omikujiCard focusCard">Play<span class="jp" lang="ja">あそぶ</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="world" aria-controls="shopCard outCard familyCard friendsCard wardCard">World<span class="jp" lang="ja">せかい</span></button>
     <button class="tab" role="tab" aria-selected="false" data-tab="tune" aria-controls="tab-tune">Tune<span class="jp" lang="ja">うた</span></button>
     <button class="tab" role="tab" aria-selected="false" data-tab="photo" aria-controls="tab-photo">Photo<span class="jp" lang="ja">しゃしん</span></button>
     <button class="tab" role="tab" aria-selected="false" data-tab="settings" aria-controls="tab-settings">Settings<span class="jp" lang="ja">せってい</span></button>
@@ -519,6 +519,8 @@ const T = /*TABLES*/{};  // names, labels and prices shared with the firmware an
 const PAGE = /*PAGE*/"dev";  // the egg reports which page it serves; an old open page reloads itself
 const $ = (id) => document.getElementById(id);
 document.querySelectorAll(".jp").forEach((e) => { if (!e.lang) e.lang = "ja"; });
+new MutationObserver(() => document.querySelectorAll(".jp:not([lang])").forEach((e) => { e.lang = "ja"; }))
+  .observe(document.documentElement, { childList: true, subtree: true });  // labels added later, too
 const PAL = { bg: "#9eaa8a", ink: "#1e2418", ghost: "#929e7f", shadow: "#8a967a" };
 let state = null, frameHex = "", token = sessionStorage.getItem("okame-token") || "";
 let tune = [], tuneSeeded = false, teachArmed = 0;
@@ -649,6 +651,7 @@ function playbackMode() {  // inside a tap that makes a sound: iOS then keeps th
 }
 function unlockAudio() {
   if (!$("sound").checked) return;
+  if (keepAlive && keepAlive.paused) keepAlive.play().catch(() => {});  // re-arm after a screen lock, inside this tap
   if (!audio) {
     try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
   }
@@ -1076,7 +1079,7 @@ $("hatchBtn").onclick = async () => {
 
 // ---------- training, old age, clock & alarm ----------
 const TRICKS = [["👋", "Wave", "ばいばい"], ["🌀", "Spin", "くるくる"], ["🙇", "Bow", "おじぎ"], ["🙃", "Hang upside down", "さかさま"]];
-const PARTIES = [7, 10, 30, 50, 100, 200, 365];
+const PARTIES = T.partyDays;
 const DAYNAMES = ["M", "T", "W", "T", "F", "S", "S"];
 let alarmDays = 0x1f, alarmDirty = false;
 DAYNAMES.forEach((d, i) => {
@@ -1091,7 +1094,7 @@ $("alarmOn").addEventListener("input", () => { alarmDirty = true; });
 let fussWas = false;
 function showLife(s) {
   const l = s.life;
-  if (unchanged("life", [l, s.stage, s.name, s.ageDays])) return;
+  if (unchanged("life", [l, s.stage, s.name, s.ageDays, !!s.game, (s.focusLeft ?? -1) >= 0])) return;
   const alive = s.stage !== "egg" && s.stage !== "gone";
   $("trainCard").hidden = !l || !alive;
   $("clockCard").hidden = !l;
