@@ -166,13 +166,15 @@ void test_scritch_has_cooldown_for_happiness() {
   p.act(Action::Scritch, t);
   p.act(Action::Scritch, t + MIN);
   TEST_ASSERT_EQUAL(2, p.state().happy);
-  TEST_ASSERT_EQUAL(20, p.state().affection);
+  TEST_ASSERT_EQUAL(10, p.state().affection);  // the second scritch within ten minutes is just a cuddle
 }
 
-void test_load_rejects_other_version() {
+void test_load_keeps_the_bird_whatever_the_version() {
   Pet p = hatched();
   PetState st = p.state();
-  st.version = 99;
+  st.version = 99;  // a newer firmware's record after a rollback: still our bird
+  TEST_ASSERT_TRUE(p.load(st));
+  st.version = 0;   // never written
   TEST_ASSERT_FALSE(p.load(st));
 }
 
@@ -928,6 +930,97 @@ void test_a_restarted_egg_cancels_the_partner_and_keeps_bought_hats() {
   TEST_ASSERT_EQUAL(100 - HAT_PRICE + Pet::PLAY_POINTS_PER_DAY, (int)p.home().points);  // games pay 30 a day at most
 }
 
+
+// ---------------------------------------------------------------- 0.7.1: reliability
+
+static int32_t fakeLocalDay(uint32_t epoch) { return (int32_t)((epoch + 9 * HOUR) / DAY); }  // "Tokyo": UTC+9
+
+void test_gift_and_seeds_follow_the_local_day() {
+  Pet p(hourFn, fakeLocalDay);
+  p.reset(T0);
+  p.tick(T0 + HATCH_AFTER);
+  // 22:30 UTC = 07:30 local the next day: a UTC day boundary is still ahead, a local one already passed.
+  uint32_t evening = (T0 / DAY) * DAY + 22 * HOUR + 30 * MIN, later = evening + 90 * MIN;  // 00:00 UTC = 09:00 local
+  p.openGift(evening, 1);
+  TEST_ASSERT_FALSE(p.giftReady(later));  // same local day, even though UTC rolled over
+  TEST_ASSERT_TRUE(p.giftReady(evening + 20 * HOUR));  // 03:30 local, the day after
+  Pet u(hourFn);  // without a day callback: UTC days, as before
+  u.reset(T0);
+  u.tick(T0 + HATCH_AFTER);
+  u.openGift(evening, 1);
+  TEST_ASSERT_TRUE(u.giftReady(later));
+}
+
+void test_scritch_affection_has_the_same_cooldown_as_joy() {
+  Pet p = hatched();
+  uint16_t a = p.state().affection;
+  for (int i = 0; i < 50; i++) p.act(Action::Scritch, T0 + HATCH_AFTER + i);  // a script hammering the button
+  TEST_ASSERT_EQUAL(a + 10, p.state().affection);
+  p.act(Action::Scritch, T0 + HATCH_AFTER + SCRITCH_COOLDOWN);
+  TEST_ASSERT_EQUAL(a + 20, p.state().affection);
+}
+
+void test_care_during_a_game_counts_but_does_not_cut_it_off() {
+  Pet p = adultAged(5);
+  p.lifeMut().partyDays = 7;
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 13}, 14);
+  e.epoch = T0;
+  ui.update(e);
+  TEST_ASSERT_TRUE(ui.startGame(Ui::Game::Janken, e.nowMs));
+  PetState st = p.state();
+  st.happy = 2;
+  p.load(st);
+  uint8_t joy = 2;
+  Result r = p.act(Action::Millet, e.epoch);
+  ui.remoteAction(Action::Millet, r, e.nowMs);
+  ui.whistle(e.nowMs);
+  ui.showGift(1, e.nowMs);
+  TEST_ASSERT_EQUAL(Screen::Janken, ui.screen());  // still playing
+  TEST_ASSERT_EQUAL(joy + 1, p.state().happy);     // the treat still counted
+}
+
+void test_a_whistle_never_cuts_a_once_only_moment() {
+  Pet p(hourFn);
+  p.reset(T0);
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 13}, 14);
+  e.epoch = T0;
+  ui.update(e);
+  e.epoch = T0 + HATCH_AFTER;
+  p.tick(e.epoch);
+  e.nowMs += 100;
+  ui.update(e);  // hatching
+  TEST_ASSERT_TRUE(ui.onceAnim());
+  ui.whistle(e.nowMs);
+  ui.remoteAction(Action::Seed, Result::Ok, e.nowMs);
+  TEST_ASSERT_TRUE(ui.onceAnim());  // the hatch plays on
+}
+
+void test_ui_runs_across_the_millis_wrap() {
+  Pet p = adultAged(5);
+  p.lifeMut().partyDays = 7;
+  Ui ui(p, 3);
+  Env e = dayEnv({2026, 11, 13}, 14);
+  e.epoch = T0;
+  e.nowMs = 0xFFFFFFFFu - 5000;  // 49.7 days of uptime, five seconds before the counter wraps to zero
+  ui.update(e);
+  int moves = 0, lastX = -1;
+  for (int i = 0; i < 200; i++) {  // 20 s across the wrap: the bird keeps wandering, nothing freezes
+    e.nowMs += 100;
+    ui.update(e);
+    if (ui.screen() == Screen::Main) {
+      int x = 0;
+      for (int px = 0; px < LCD_W; px++)
+        if (ui.frame().get(px, LCD_H - 1)) { x = px; break; }
+      if (lastX >= 0 && x != lastX) moves++;
+      lastX = x;
+    }
+  }
+  TEST_ASSERT_TRUE(moves > 0);
+  TEST_ASSERT_EQUAL(Screen::Main, ui.screen());
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_egg_hatches_after_two_minutes);
@@ -944,7 +1037,7 @@ int main() {
   RUN_TEST(test_poor_care_gives_scruffy_adult);
   RUN_TEST(test_tune_learned_over_three_days);
   RUN_TEST(test_scritch_has_cooldown_for_happiness);
-  RUN_TEST(test_load_rejects_other_version);
+  RUN_TEST(test_load_keeps_the_bird_whatever_the_version);
   RUN_TEST(test_duet_perfect_play_wins);
   RUN_TEST(test_duet_timeout_loses);
   RUN_TEST(test_peekaboo_hits_only_while_peeking);
@@ -986,5 +1079,10 @@ int main() {
   RUN_TEST(test_outing_on_screen_sends_one_postcard);
   RUN_TEST(test_partner_then_an_egg_the_next_morning);
   RUN_TEST(test_a_restarted_egg_cancels_the_partner_and_keeps_bought_hats);
+  RUN_TEST(test_gift_and_seeds_follow_the_local_day);
+  RUN_TEST(test_scritch_affection_has_the_same_cooldown_as_joy);
+  RUN_TEST(test_care_during_a_game_counts_but_does_not_cut_it_off);
+  RUN_TEST(test_a_whistle_never_cuts_a_once_only_moment);
+  RUN_TEST(test_ui_runs_across_the_millis_wrap);
   return UNITY_END();
 }

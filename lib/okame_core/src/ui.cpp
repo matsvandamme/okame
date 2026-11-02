@@ -169,6 +169,7 @@ void Ui::startAnim(Anim a, uint32_t nowMs) {
 
 void Ui::remoteAction(Action a, Result r, uint32_t nowMs) {
   if (r == Result::Away) return;  // nobody home: the cage just shows "OUT"
+  if (!canReact()) return;        // the care still counts; a game, a focus session or a once-only moment plays on
   if (r == Result::Refused) return startAnim(Anim::Refused, nowMs);
   if (r == Result::NotNeeded) return startAnim(Anim::NotNeeded, nowMs);
   if (r == Result::Sleeping) return startAnim(Anim::Sleeping, nowMs);
@@ -371,7 +372,7 @@ void Ui::update(const Env& env) {
   maybeFriend(env);
 
   // Wander on the main screen.
-  if (now >= nextMove_) {
+  if ((int32_t)(now - nextMove_) >= 0) {
     nextMove_ = now + 700;
     hop_ = false;
     Mood m = pet_.mood(env.epoch);
@@ -846,8 +847,8 @@ void Ui::drawMain(const Env& env) {
   Pose pose = Pose::Idle;
   if (m == Mood::Asleep) pose = Pose::Sleep;
   else if (m == Mood::Sad || m == Mood::Sick) pose = Pose::Flat;
-  if (now < blinkUntil_ && pose == Pose::Idle) pose = Pose::Blink;
-  if (now < dozeUntil_ && pose == Pose::Idle) pose = Pose::Sleep;
+  if ((int32_t)(blinkUntil_ - now) > 0 && pose == Pose::Idle) pose = Pose::Blink;
+  if ((int32_t)(dozeUntil_ - now) > 0 && pose == Pose::Idle) pose = Pose::Sleep;
   bool fuss = pet_.fussing(env.epoch) && (m == Mood::Content || m == Mood::Meh);
   if (fuss) pose = (now / 350) % 2 ? Pose::Up : Pose::Flat;  // stamping about, cross
   int y = LCD_H - (hop_ || (fuss && (now / 350) % 4 == 1) ? 1 : 0);

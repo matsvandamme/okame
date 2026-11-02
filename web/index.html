@@ -813,8 +813,11 @@ function showWeather(w) {
   if (w && w.kind) $("wxChip").textContent = `${WX[w.kind] || ""} ${w.temp}°${w.place ? " " + w.place : ""}`;
 }
 
+let lastSeq = 0;
 function applyState(s) {
   if (s.page && PAGE !== "dev" && s.page !== PAGE) { location.reload(); return; }
+  if (s.seq && s.seq < lastSeq) return;  // an older state overtaken by a newer one: ignore it
+  lastSeq = s.seq || lastSeq;
   state = s;
   if (s.frame) showFrame(s.frame);
   $("food").textContent = hearts(s.hunger);
@@ -952,12 +955,17 @@ async function startGame(g) {
   if (!r.ok) return toast("Not now: it's asleep, busy or still an egg.");
   pollGame();
 }
-let gamePoll = null;
+let gamePoll = null, gamePollFails = 0;
 function pollGame() {
   clearInterval(gamePoll);
+  gamePollFails = 0;
   gamePoll = setInterval(async () => {
     const s = await api("/api/state", null, true);
-    if (!s.ok || !s.stage) return;
+    if (!s.ok || !s.stage) {  // the bird dropped off the Wi-Fi: don't hammer it four times a second for ever
+      if (++gamePollFails >= 5) { clearInterval(gamePoll); gamePoll = null; }
+      return;
+    }
+    gamePollFails = 0;
     applyState(s);
     if (!s.game) { clearInterval(gamePoll); gamePoll = null; }
   }, 250);

@@ -49,7 +49,7 @@ class Ui {
 
   // Platform events.
   void visitor(uint32_t nowMs) { startAnim(Anim::Visitor, nowMs); }
-  void whistle(uint32_t nowMs) { startAnim(Anim::Whistle, nowMs); }
+  void whistle(uint32_t nowMs) { if (canReact()) startAnim(Anim::Whistle, nowMs); }
   // An action done from the phone page: play its animation.
   void remoteAction(Action a, Result r, uint32_t nowMs);
 
@@ -90,7 +90,10 @@ class Ui {
   enum class Game : uint8_t { Duet, Peek, Rain, Janken, Dance, LeftRight };
   bool startGame(Game g, uint32_t nowMs);
   bool startGame(bool duet, uint32_t nowMs) { return startGame(duet ? Game::Duet : Game::Peek, nowMs); }
-  void showGift(int unlocked, uint32_t nowMs) { giftItem_ = unlocked; startAnim(Anim::Gift, nowMs); }
+  void showGift(int unlocked, uint32_t nowMs) {
+    giftItem_ = unlocked;
+    if (canReact()) startAnim(Anim::Gift, nowMs);
+  }
   void gameInput(Press p, uint32_t nowMs);
   bool inGame() const {
     return screen_ == Screen::Duet || screen_ == Screen::Peek || screen_ == Screen::Rain || screen_ == Screen::Janken ||

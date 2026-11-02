@@ -11,6 +11,7 @@ struct SavedNetwork {
 // Everything that survives a reboot, in NVS ("okame" namespace).
 namespace storage {
 void begin();
+bool hasPet();              // a bird was ever saved (so a load that fails is never a reason to start over)
 bool loadPet(PetState& out);
 void savePet(const PetState& st);
 void loadExtra(Pet& pet);   // 0.4 additions, their own key so a rollback leaves "pet" untouched

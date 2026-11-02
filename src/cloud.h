@@ -10,6 +10,7 @@ bool connected();            // reached the relay in the last minute
 String status();             // one-line diagnostics for the serial console
 void setKey(const String& hex);
 String lastMessageJson();    // {"from","text","translation","at"} or "null", for the phone page
+const char* resetReason();   // why the dongle last started (power, software, panic, watchdog…)
 // Tell the relay something happened here (a JSON object with "type"), e.g. {"type":"love"}. Sent on the next poll;
 // kept (up to 16) while offline.
 void event(const String& json);

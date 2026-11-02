@@ -166,8 +166,9 @@ class Pet {
  public:
   static constexpr uint16_t VERSION = 1;
   using HourFn = int (*)(uint32_t epoch);
+  using DayFn = int32_t (*)(uint32_t epoch);  // the local calendar day (civil()); without one, UTC days
 
-  explicit Pet(HourFn hour) : hour_(hour) { reset(0); }
+  explicit Pet(HourFn hour, DayFn day = nullptr) : hour_(hour), day_(day) { reset(0); }
 
   void reset(uint32_t now);
   // Advance to `now`, catching up at most rules::CATCH_UP_CAP of missed time.
@@ -192,7 +193,7 @@ class Pet {
   uint32_t ageSeconds(uint32_t now) const { return s_.born && now > s_.born ? now - s_.born : 0; }
 
   const PetState& state() const { return s_; }
-  bool load(const PetState& st);  // false if the version doesn't match
+  bool load(const PetState& st);  // false only for an empty record; the layout has only ever grown
 
   // 0.4 additions (see PetExtra).
   static constexpr uint16_t EXTRA_VERSION = 1;
@@ -250,7 +251,6 @@ class Pet {
   // 0.7 additions (see PetHome).
   static constexpr uint16_t HOME_VERSION = 1;
   static constexpr uint8_t CARE_POINTS_PER_DAY = 10, PLAY_POINTS_PER_DAY = 30;
-  void setToday(int32_t day) { today_ = day; }  // the local calendar day, from the platform (0 = unknown)
   static constexpr uint32_t TOY_COOLDOWN = rules::HOUR;
   const PetHome& home() const { return h_; }
   PetHome& homeMut() { return h_; }
@@ -289,7 +289,12 @@ class Pet {
   PetBirds b_{BIRDS_VERSION, 0, 0, {}, 0, 0, 0};
   PetLife l_{LIFE_VERSION};
   PetHome h_{HOME_VERSION};
-  int32_t today_ = 0;
-  int32_t dayOf(uint32_t now) const { return today_ ? today_ : (int32_t)(now / rules::DAY); }
+  int32_t dayOf(uint32_t t) const { return day_ ? day_(t) : (int32_t)(t / rules::DAY); }
   HourFn hour_;
+  DayFn day_;
 };
+
+// Every saved record must fit the 512-byte buffer storage.cpp reads them into (a longer record from a newer
+// firmware is cut, never refused, so a rollback keeps the bird).
+static_assert(sizeof(PetState) <= 512 && sizeof(PetExtra) <= 512 && sizeof(PetBirds) <= 512 &&
+              sizeof(PetLife) <= 512 && sizeof(PetHome) <= 512, "saved records must stay under 512 bytes");

@@ -35,7 +35,7 @@ void Pet::reset(uint32_t now) {
 }
 
 bool Pet::load(const PetState& st) {
-  if (st.version != VERSION) return false;
+  if (st.version == 0) return false;  // never written; any real version loads (fields are only ever appended)
   s_ = st;
   s_.name[sizeof s_.name - 1] = 0;
   return true;
@@ -226,11 +226,11 @@ Result Pet::doAct(Action a, uint32_t now) {
       s_.lightsOff = !s_.lightsOff;
       return Result::Ok;
     case Action::Scritch:
-      if (now - s_.lastScritch >= SCRITCH_COOLDOWN || s_.lastScritch == 0) {
+      if (now - s_.lastScritch >= SCRITCH_COOLDOWN || s_.lastScritch == 0) {  // love, too, grows ten minutes at a time
         s_.happy = inc(s_.happy, MAX_STAT);
         s_.lastScritch = now;
+        if (s_.affection < 1000) s_.affection += 10;
       }
-      if (s_.affection < 1000) s_.affection += 10;
       return Result::Ok;
     case Action::GameWin:
       s_.happy = inc(s_.happy, MAX_STAT);
@@ -301,7 +301,7 @@ bool Pet::wear(uint8_t hat) {
 
 bool Pet::giftReady(uint32_t now) const {
   if (s_.stage == Stage::Egg || s_.stage == Stage::Gone) return false;
-  return s_.lastGift == 0 || now / DAY != s_.lastGift / DAY;
+  return s_.lastGift == 0 || dayOf(now) != dayOf(s_.lastGift);  // a new local day, like the omikuji
 }
 
 int Pet::openGift(uint32_t now, uint32_t rnd) {

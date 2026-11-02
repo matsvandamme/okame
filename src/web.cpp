@@ -130,9 +130,10 @@ String web::stateJson() {
   const PetState& s = app::pet.state();
   char frame[201];
   app::frameHex(frame);
+  static uint32_t seq = 0;  // the page drops a state that arrives after a newer one (polls and pushes cross)
   String j;
-  j.reserve(2048);
-  j += "{\"name\":" + jsonString(s.name);
+  j.reserve(4096);
+  j += "{\"seq\":" + String(++seq) + ",\"name\":" + jsonString(s.name);
   j += ",\"stage\":\"" + String(stageName(s.stage)) + "\"";
   j += ",\"variant\":\"" + String(variantName(s.variant)) + "\"";
   {
@@ -505,7 +506,12 @@ void handleBuy(AsyncWebServerRequest* r) {
   if (!res) app::requestSave();
   static const char* const ERR[] = {"", "not enough seeds", "already have it", "not now"};
   if (res) return sendJson(r, 409, String("{\"error\":\"") + ERR[-res] + "\"}");
-  sendJson(r, 200, String("{\"ok\":true,\"points\":") + app::pet.home().points + "}");
+  uint32_t points;
+  {
+    app::Lock lock;
+    points = app::pet.home().points;
+  }
+  sendJson(r, 200, String("{\"ok\":true,\"points\":") + points + "}");
 }
 
 void handleCage(AsyncWebServerRequest* r) {
@@ -680,7 +686,7 @@ void begin() {
 // Push the screen to open pages whenever it changes, and the stats every few seconds.
 void loop() {
   uint32_t now = millis();
-  if (events.count() == 0 || now < nextFrame) return;
+  if (events.count() == 0 || (int32_t)(now - nextFrame) < 0) return;  // wrap-safe: the dongle runs for months
   nextFrame = now + 150;
   char frame[201];
   {
@@ -700,7 +706,7 @@ void loop() {
     }
     events.send(notes.c_str(), "tune");
   }
-  if (now >= nextState) {
+  if ((int32_t)(now - nextState) >= 0) {
     nextState = now + 3000;
     events.send(web::stateJson().c_str(), "state");
   }

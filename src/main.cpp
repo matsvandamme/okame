@@ -34,8 +34,10 @@ static Date localDate(uint32_t epoch) {
   return {uint16_t(tm.tm_year + 1900), uint8_t(tm.tm_mon + 1), uint8_t(tm.tm_mday)};
 }
 
+static int32_t localDay(uint32_t epoch) { return civil(localDate(epoch)); }
+
 namespace app {
-Pet pet(localHour);
+Pet pet(localHour, localDay);
 Ui ui(pet, esp_random());
 SemaphoreHandle_t mutex = xSemaphoreCreateRecursiveMutex();
 }  // namespace app
@@ -51,6 +53,8 @@ bool bootReal = false;   // bootEpoch came from a real clock (saved earlier), no
 bool clockTrusted() { return bootReal || net::timeValid(); }
 volatile bool saveWanted = false;
 uint32_t lastSave = 0, lastTick = 0, nextWhistle = 0;
+bool pushFrame = false;
+uint8_t lastBacklight = 0;
 
 uint16_t pairCode = 0;
 uint32_t pairUntil = 0, pairLockUntil = 0;
@@ -107,8 +111,9 @@ void serialCommands() {
     } else if (line == "state") {
       app::Lock lock;
       const PetState& s = app::pet.state();
-      Serial.printf("STATE stage=%d hunger=%d happy=%d poop=%d sick=%d fw=%s screen=%d\n", int(s.stage), s.hunger,
-                    s.happy, s.poop, s.sick, FW_NAME, int(app::ui.screen()));
+      Serial.printf("STATE stage=%d hunger=%d happy=%d poop=%d sick=%d fw=%s screen=%d heap=%u up=%lus reset=%s\n",
+                    int(s.stage), s.hunger, s.happy, s.poop, s.sick, FW_NAME, int(app::ui.screen()), (unsigned)ESP.getFreeHeap(),
+                    (unsigned long)(millis() / 1000), cloud::resetReason());
     }
     line = "";
   }
@@ -206,9 +211,13 @@ void setup() {
   bootReal = bootEpoch >= 1700000000;
   if (!bootReal) bootEpoch = 1700000000;
   PetState st;
-  if (storage::loadPet(st)) app::pet.load(st);
-  else if (bootReal) app::pet.reset(app::epoch());
-  // else: keep the constructor's egg; it starts its clock once real time is known
+  if (storage::loadPet(st) && app::pet.load(st)) {
+    // the bird is back
+  } else if (!storage::hasPet() && bootReal) {
+    app::pet.reset(app::epoch());  // a brand-new dongle: the egg starts now
+  }
+  // else: keep the constructor's egg; it starts its clock once real time is known. A saved bird that somehow
+  // can't be read is never a reason to start over.
   storage::loadExtra(app::pet);
   storage::loadBirds(app::pet);
   storage::loadLife(app::pet);
@@ -253,7 +262,6 @@ void loop() {
     env.today = app::today();
     env.hour = env.today.y ? localHour(ep) : -1;
     env.minute = env.today.y ? localMinute(ep) : -1;
-    app::pet.setToday(env.today.y ? civil(env.today) : 0);
     if (net::takeVisitor() && app::ui.screen() == Screen::Main) app::ui.visitor(now);
     app::ui.update(env);
 
@@ -278,7 +286,7 @@ void loop() {
     if (s.tuneLevel >= rules::TUNE_LEARNED && app::ui.screen() == Screen::Main &&
         app::pet.mood(ep) == Mood::Content && !app::pet.away(ep)) {
       if (!nextWhistle) nextWhistle = now + 20 * 60 * 1000 + esp_random() % (40 * 60 * 1000);
-      if (now >= nextWhistle) {
+      if ((int32_t)(now - nextWhistle) >= 0) {
         nextWhistle = 0;
         app::playTune();
       }
@@ -294,15 +302,23 @@ void loop() {
     if (memcmp(packed, lastPacked, sizeof packed)) {
       memcpy(lastPacked, packed, sizeof packed);
       renderRgb565(app::ui.frame(), pixels);
-      lcd.pushImage(0, 0, PX_W, PX_H, (const lgfx::rgb565_t*)pixels);
+      pushFrame = true;
     }
     Screen sc = app::ui.screen();
-    backlight(sc == Screen::Sleep || sc == Screen::Lights ? 60 : 255);
+    uint8_t level = sc == Screen::Sleep || sc == Screen::Lights ? 60 : 255;
+    if (level != lastBacklight) backlight(lastBacklight = level);
+  }
+  if (pushFrame) {  // the slow SPI push happens with the lock released, so the web and relay tasks never wait on it
+    pushFrame = false;
+    lcd.pushImage(0, 0, PX_W, PX_H, (const lgfx::rgb565_t*)pixels);
   }
 
   if (saveWanted && now - lastSave > SAVE_MIN_GAP_MS) save();
   if (now - lastSave > SAVE_EVERY_MS) save();
-  if (now > MARK_VALID_AFTER_MS) ota::healthy();
+  // A new image is confirmed only once it has run a minute AND the network path works (Wi-Fi up, clock from SNTP):
+  // an update that broke Wi-Fi would otherwise confirm itself by just staying up, and could never update again.
+  // Until then a reset rolls back to the previous image.
+  if (now > MARK_VALID_AFTER_MS && net::online() && net::timeValid()) ota::healthy();
   if (ota::rebootDue()) {
     save();
     delay(200);

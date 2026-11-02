@@ -8,63 +8,51 @@ namespace storage {
 
 void begin() { prefs.begin("okame", false); }
 
+// Saved records only ever grow at the end. A shorter one (from an older firmware) loads with the new fields zeroed;
+// a longer one (after a rollback from a newer firmware) loads what this firmware knows. Nothing is ever refused.
+static uint8_t blob[512];
+static size_t readBlob(const char* key, void* out, size_t size) {
+  size_t len = prefs.getBytesLength(key);
+  if (len < 2 || len > sizeof blob) return 0;
+  memset(blob, 0, sizeof blob);
+  prefs.getBytes(key, blob, len);
+  memcpy(out, blob, size);
+  return len;
+}
+
+bool hasPet() { return prefs.getBytesLength("pet") >= 2; }
+
 bool loadPet(PetState& out) {
-  // Accept shorter blobs so an update that appends fields keeps the bird.
-  size_t len = prefs.getBytesLength("pet");
-  if (len < 2 || len > sizeof out) return false;
   memset(&out, 0, sizeof out);
-  prefs.getBytes("pet", &out, len);
-  return out.version == Pet::VERSION;
+  return readBlob("pet", &out, sizeof out) > 0;
 }
 
 void savePet(const PetState& st) { prefs.putBytes("pet", &st, sizeof st); }
 
 void loadExtra(Pet& pet) {
-  size_t len = prefs.getBytesLength("pet2");
-  if (len < 2 || len > sizeof(PetExtra)) return;
   static PetExtra x;  // ~300 bytes: keep it off the loop task's stack
-  memset(&x, 0, sizeof x);
-  prefs.getBytes("pet2", &x, len);
-  pet.loadExtra(x);
+  if (readBlob("pet2", &x, sizeof x)) pet.loadExtra(x);
 }
 
 void saveExtra(const PetExtra& x) { prefs.putBytes("pet2", &x, sizeof x); }
 
 void loadBirds(Pet& pet) {
-  size_t len = prefs.getBytesLength("pet3");
-  if (len < 2 || len > sizeof(PetBirds)) return;  // a shorter save from an older layout loads with the rest zeroed
   PetBirds b;
-  memset(&b, 0, sizeof b);
-  prefs.getBytes("pet3", &b, len);
-  pet.loadBirds(b);
+  if (readBlob("pet3", &b, sizeof b)) pet.loadBirds(b);
 }
 
 void saveBirds(const PetBirds& b) { prefs.putBytes("pet3", &b, sizeof b); }
 
 void loadLife(Pet& pet) {
-  // Later releases append fields: a shorter save loads zero-filled, a longer one (after a rollback) loses only
-  // the fields this firmware doesn't know.
-  size_t len = prefs.getBytesLength("pet4");
-  static uint8_t buf[512];
-  if (len < 2 || len > sizeof buf) return;
-  memset(buf, 0, sizeof buf);
-  prefs.getBytes("pet4", buf, len);
   PetLife l;
-  memcpy(&l, buf, sizeof l);
-  pet.loadLife(l);
+  if (readBlob("pet4", &l, sizeof l)) pet.loadLife(l);
 }
 
 void saveLife(const PetLife& l) { prefs.putBytes("pet4", &l, sizeof l); }
 
 void loadHome(Pet& pet) {
-  size_t len = prefs.getBytesLength("pet5");
-  static uint8_t buf[512];
-  if (len < 2 || len > sizeof buf) return;
-  memset(buf, 0, sizeof buf);
-  prefs.getBytes("pet5", buf, len);
   static PetHome h;
-  memcpy(&h, buf, sizeof h);
-  pet.loadHome(h);
+  if (readBlob("pet5", &h, sizeof h)) pet.loadHome(h);
 }
 
 void saveHome(const PetHome& h) { prefs.putBytes("pet5", &h, sizeof h); }
@@ -84,10 +72,10 @@ void saveNetworks(const SavedNetwork* nets, int n) {
 
 String apPassword() {
   String p = prefs.getString("appw", "");
-  if (p.length() != 8) {
-    char buf[9];
-    for (int i = 0; i < 8; i++) buf[i] = '0' + esp_random() % 10;
-    buf[8] = 0;
+  if (p.length() != 10) {  // ten digits: easy on a phone keypad, far harder to guess than eight
+    char buf[11];
+    for (int i = 0; i < 10; i++) buf[i] = '0' + esp_random() % 10;
+    buf[10] = 0;
     p = buf;
     prefs.putString("appw", p);
   }

@@ -10,6 +10,7 @@
 #include "relay_cert.h"
 #include <mbedtls/x509_crt.h>
 #include <esp_log.h>
+#include <esp_system.h>
 
 namespace web {
 String stateJson();
@@ -35,6 +36,7 @@ int otaAck = -1;             // Telegram /update: ack once the check has finishe
 String pendingMsg;           // ... and the command itself, to replay it if something interrupts it
 int seen[32];                // recent command ids, so a resent command is not applied twice
 int seenAt = 0;
+int lastApplied = 0;         // the highest command id ever applied, saved: a reboot can't make us feed twice
 volatile uint32_t lastOk = 0, attempts = 0;
 char lastErr[64] = "none";
 String lastMsg = "null";
@@ -60,6 +62,9 @@ String body() {
   st.remove("frame");
   doc["state"] = st;
   doc["fw"] = FW_NAME;
+  doc["health"]["heap"] = ESP.getFreeHeap();
+  doc["health"]["up"] = millis() / 1000;
+  doc["health"]["reset"] = cloud::resetReason();
   {
     Locked l;
     JsonArray a = doc["acks"].to<JsonArray>();
@@ -170,20 +175,29 @@ bool unhex(const char* hex, uint8_t* out, size_t n) {
 }
 
 bool seenBefore(int id) {
+  if (id <= lastApplied) return true;  // ids only ever grow; anything at or below the saved mark was handled
   for (int v : seen)
     if (v == id) return true;
   seen[seenAt++ % 32] = id;
   return false;
 }
 
+void markApplied(int id) {
+  if (id > lastApplied) {
+    lastApplied = id;
+    prefs.putInt("lastcmd", id);
+  }
+}
+
 void apply(JsonDocument& cmd, const String& raw) {
   int id = cmd["id"] | 0;
   String type = cmd["type"] | "";
   uint32_t now = millis();
-  if (type == "msg" || type == "pic" || type == "hug") {  // one thing on the screen at a time, in order
-    shows.push_back(raw);
+  if (type == "msg" || type == "pic" || type == "hug" || type == "pair") {  // one thing on the screen at a time
+    if (shows.size() < 8) shows.push_back(raw);  // in order; the relay resends anything we had to leave out
     return;
   }
+  markApplied(id);
   app::Lock lock;
   if (type == "act") {
     String a = cmd["action"] | "";
@@ -263,10 +277,6 @@ void apply(JsonDocument& cmd, const String& raw) {
   } else if (type == "ota") {  // Telegram /update: look for a signed release now; acked with the result
     ota::checkNow();
     otaAck = id;
-  } else if (type == "pair") {
-    String code = cmd["code"] | "0";
-    app::ui.showCode(code.toInt(), "TELEGRAM", now, 3 * 60 * 1000);
-    ack(id, "shown");
   } else if (type == "pairdone") {
     if (app::ui.screen() == Screen::Code) app::ui.showCode(0, "", now, 0);
     app::ui.forceAnim(Anim::GameWin, now);
@@ -295,6 +305,10 @@ void show(const String& raw) {
     prefs.putString("msg", lastMsg);
     pendingMsgAck = id;
     pendingMsg = raw;
+  } else if (String(cmd["type"] | "") == "pair") {  // a Telegram pairing code, once the screen is free for it
+    String code = cmd["code"] | "0";
+    app::ui.showCode(code.toInt(), "TELEGRAM", now, 3 * 60 * 1000);
+    ack(id, "shown");
   } else if (String(cmd["type"] | "") == "hug") {
     String from = cmd["from"] | "";
     app::ui.showHug(from.c_str(), now);
@@ -335,6 +349,7 @@ void begin() {
   for (int& v : seen) v = -1;
   prefs.begin("cloud", false);
   key = prefs.getString("key", "");
+  lastApplied = prefs.getInt("lastcmd", 0);
   lastMsg = prefs.getString("msg", "null");
   lastHug = prefs.getString("hug", "null");
   xTaskCreatePinnedToCore(task, "cloud", 10240, nullptr, 1, nullptr, 0);
@@ -348,7 +363,10 @@ void loop() {
   }
   for (auto& s : todo) {
     JsonDocument cmd;
-    if (!deserializeJson(cmd, s) && !seenBefore(cmd["id"] | 0)) apply(cmd, s);
+    if (deserializeJson(cmd, s)) continue;
+    int id = cmd["id"] | 0;
+    if (seenBefore(id)) ack(id, "ok");  // already done before a reboot: tell the relay so it stops resending
+    else apply(cmd, s);
   }
   if (otaAck >= 0 && !ota::busy() && !ota::rebootDue()) {  // an installed update reboots instead; the relay sees the new fw
     ack(otaAck, ota::status());
@@ -386,6 +404,20 @@ void setKey(const String& hex) {
 }
 
 String lastMessageJson() { return lastMsg; }
+
+const char* resetReason() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "power";
+    case ESP_RST_SW: return "software";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT: return "watchdog";
+    case ESP_RST_BROWNOUT: return "brownout";
+    case ESP_RST_DEEPSLEEP: return "sleep";
+    default: return "other";
+  }
+}
 
 String lastHugJson() { return lastHug; }
 
