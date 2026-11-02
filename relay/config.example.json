@@ -1,0 +1,8 @@
+{
+  "device_key": "64 hex characters shared with the egg (tools/claim_key.py hands it over once)",
+  "partner_chats": [123456789],
+  "tz": "Europe/Brussels",
+  "port": 8443,
+  "weather": {"lat": 50.85, "lon": 4.35, "place": "Home"},
+  "dates": [{"m": 1, "d": 1, "kind": 1, "who": "Name", "year": 2000}]
+}

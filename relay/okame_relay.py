@@ -34,6 +34,7 @@ TZ = ZoneInfo(CFG.get("tz", "Europe/Brussels"))
 TOKEN = open(f"{HOME}/telegram_token").read().strip()
 API = f"https://api.telegram.org/bot{TOKEN}"
 MODEL = "claude-opus-5-5"
+CHEAP_MODEL = "claude-haiku-5-5"  # translation and romaji don't need the big model
 LCD_W, LCD_H = 40, 20
 log = logging.getLogger("okame")
 
@@ -41,6 +42,8 @@ log = logging.getLogger("okame")
 
 db = sqlite3.connect(f"{HOME}/okame.db", isolation_level=None)
 db.row_factory = sqlite3.Row
+db.execute("pragma journal_mode=wal")   # a hand edit in another process never locks the relay out
+db.execute("pragma busy_timeout=5000")
 db.executescript("""
 create table if not exists users (chat_id integer primary key, name text, lang text, paired_at real);
 create table if not exists queue (id integer primary key autoincrement, kind text, payload text,
@@ -65,7 +68,13 @@ def event(who, what):
     db.execute("delete from events where at < ?", (time.time() - 7 * 86400,))
 
 
+SUPERSEDE = {"wx", "home", "dates", "rival", "ota"}  # only the newest of these matters to the egg
+EXPIRE = {"pair": 900, "pairdone": 900}  # a code is only valid for 15 minutes; everything else waits for the egg
+
+
 def enqueue(kind, payload, chat_id=None):
+    if kind in SUPERSEDE:
+        db.execute("delete from queue where kind=? and done is null", (kind,))
     cur = db.execute("insert into queue(kind,payload,chat_id,created) values(?,?,?,?)",
                      (kind, json.dumps(payload), chat_id, time.time()))
     new_command.set()
@@ -228,7 +237,7 @@ Voice: a cheeky, affectionate cockatiel. Short replies (1-3 sentences), playful,
 *fluffs feathers*), at most one or two emoji. Reply in the language the person writes in (Japanese, English or
 Dutch). Never mention being an AI, a language model or Telegram. You know your own state (given below) and may
 hint at needs (hungry, dirty cage, sleepy) the way a bird would. You can't do actions yourself: if they want to
-feed or play, tell them the command (/feed, /treat, /bath, /vet, /scritch, /cover, /draw, /song, /note, /hug, /home, /teach, /catch)."""
+feed or play, tell them the command ({commands})."""
 
 
 def species():
@@ -240,18 +249,17 @@ def species():
 def persona():
     """PERSONA for the bird that is actually on the screen; an owl hoots instead of chirping."""
     sp = species()
-    text = PERSONA.replace("cockatiel", sp)
+    text = PERSONA.replace("cockatiel", sp).replace("{commands}", command_list())
     if sp == "owl":
         text = text.replace("(ピヨ, chirp,", "(ホーホー, hoo,")
     return text
 
 
-async def ask(system, prompt, schema=None, effort="low", max_tokens=1500):
+async def ask(system, prompt, schema=None, effort="low", max_tokens=1500, model=None):
     if not ai:
         return None
-    kwargs = dict(model=MODEL, max_tokens=max_tokens, output_config={"effort": effort},
-                  system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-                  messages=[{"role": "user", "content": prompt}],
+    kwargs = dict(model=model or MODEL, max_tokens=max_tokens, output_config={"effort": effort},
+                  system=system, messages=[{"role": "user", "content": prompt}],
                   betas=["server-side-fallback-2026-07-01"], fallbacks="default")
     if schema:
         kwargs["output_config"]["format"] = {"type": "json_schema", "schema": schema}
@@ -267,7 +275,16 @@ async def ask(system, prompt, schema=None, effort="low", max_tokens=1500):
     if r.stop_reason == "refusal":
         return None
     text = "".join(b.text for b in r.content if b.type == "text").strip()
-    return json.loads(text) if schema else text
+    if not schema:
+        return text
+    if r.stop_reason == "max_tokens":  # cut off mid-JSON: no answer is better than a crash
+        log.warning("AI answer cut off at %d tokens", max_tokens)
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        log.warning("AI answer was not valid JSON")
+        return None
 
 
 def state_line(s):
@@ -278,21 +295,27 @@ def state_line(s):
             f"age {s.get('ageDays')} days, name {s.get('name') or 'not named yet'}")
 
 
-async def ai_chat(name, text):
+async def ai_chat(chat, name, text):
+    """Each chat has its own memory: what Matthieu tells Okame never comes back out to Haruki."""
     st = state_line(device["state"])
-    hist = kv_get("chat_hist", [])[-6:]
+    hist = kv_get(f"chat_hist:{chat}", [])[-6:]
     convo = "\n".join(f"{h['who']}: {h['text']}" for h in hist)
     reply = await ask(persona(), f"Your state right now: {st}.\nRecent chat:\n{convo}\n\n{name} says: {text}")
     if reply:
         hist += [{"who": name, "text": text}, {"who": "Okame", "text": reply}]
-        kv_set("chat_hist", hist[-12:])
+        kv_set(f"chat_hist:{chat}", hist[-12:])
     return reply
 
 
-async def ai_translate(text, sender_lang):
-    target = "English" if sender_lang == "ja" else "Japanese"
+JAPANESE = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
+
+
+async def ai_translate(text, sender_lang=None):
+    """Japanese notes become English and the rest Japanese: decided by the note itself, not the phone's language."""
+    target = "English" if JAPANESE.search(text) else "Japanese"
     return await ask("You translate short love notes between a couple. Keep the warmth and tone; natural, not stiff. "
-                     "Return only the translation.", f"Translate into {target}:\n{text}", effort="low", max_tokens=400)
+                     "Return only the translation.", f"Translate into {target}:\n{text}", effort="low", max_tokens=400,
+                     model=CHEAP_MODEL)
 
 
 DRAW_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["rows", "title"],
@@ -326,9 +349,11 @@ async def ai_song(idea):
     return (out["title"], notes) if len(notes) >= 4 else None
 
 
-async def ai_diary():
+async def ai_diary(name):
+    """Today's diary for whoever asks: the egg's own day, plus only this person's own chats with it."""
     since = time.time() - 86400
-    evs = db.execute("select * from events where at > ? order by at", (since,)).fetchall()
+    evs = [e for e in db.execute("select * from events where at > ? order by at", (since,)).fetchall()
+           if not (e["what"].startswith("chatted") and e["who"] != name)]
     lines = [f"{datetime.fromtimestamp(e['at'], TZ):%H:%M} {e['who']}: {e['what']}" for e in evs] or ["(a quiet day)"]
     return await ask(persona(), "Write today's diary entry: exactly three short, funny lines from your point of view, "
                      "then the same three lines in Japanese. Today's events:\n" + "\n".join(lines[-60:]) +
@@ -347,6 +372,19 @@ session: aiohttp.ClientSession = None
 
 async def tg(method, **params):
     files = {k: v for k, v in params.items() if isinstance(v, (bytes, tuple))}
+    for attempt in range(2):
+        data = await _tg_once(method, files, params)
+        if data.get("ok", True):
+            return data
+        wait = (data.get("parameters") or {}).get("retry_after")
+        log.warning("telegram %s: %s", method, data.get("description", "not ok"))
+        if attempt or wait is None:
+            return {}
+        await asyncio.sleep(min(int(wait), 30))  # flood control: wait as asked, then once more
+    return {}
+
+
+async def _tg_once(method, files, params):
     try:
         if files:
             form = aiohttp.FormData()
@@ -360,8 +398,11 @@ async def tg(method, **params):
                 return await r.json()
         async with session.post(f"{API}/{method}", json={k: v for k, v in params.items() if v is not None}) as r:
             return await r.json()
-    except aiohttp.ClientError as e:
-        log.warning("telegram %s failed: %s", method, e)
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        log.warning("telegram %s failed: %s", method, type(e).__name__)  # never the message: aiohttp may quote the URL
+        return {}
+    except ValueError:  # not JSON (a proxy page, say)
+        log.warning("telegram %s: bad reply", method)
         return {}
 
 
@@ -400,6 +441,9 @@ def status_caption():
         wise += f"\n🎒 out {PLACES[home['away']][1]} (back in ~{home.get('backIn', 0)} min)"
     if "points" in home:
         wise += f"\n🌻 {home['points']} seeds"
+    h = s.get("health") or {}
+    if h:
+        wise += f"\n🔧 up {int(h.get('up', 0)) // 3600}h · {int(h.get('heap', 0)) // 1024} KB free · reset: {h.get('reset', '?')}"
     return (f"<b>{name}</b> · {s.get('stage')} · {s.get('ageDays', 0)}d · {s.get('weight', 0)}g{wise}\n"
             f"Food {hearts(s.get('hunger'))}\nJoy  {hearts(s.get('happy'))}\n"
             f"Mood: {s.get('mood')}{' · 🤒 sick' if s.get('sick') else ''}{' · 💩' * int(s.get('poop') or 0)}\n{seen}")
@@ -411,14 +455,50 @@ CARE = {"feed": ("seed", "Crunch crunch 🌻"), "treat": ("millet", "Millet!! My
 RESULT_TEXT = {"refused": "…but it isn't hungry right now 🙅", "not-needed": "…not needed, all good! ✨",
                "sleeping": "…shh, the cage is covered. Uncover it first 🌙",
                "away": "…but I'm out on an outing 🎒 Back soon!"}
-HELP = ("<b>オカメ Okame</b>, your pocket bird 🐦💛\n\n"
-        "<b>Look after me</b>\n/status how I'm doing · /photo my screen\n/feed /treat /bath /vet /scritch /cover\n\n"
-        "<b>Make my screen sparkle</b>\n/note &lt;text&gt; a love note on my screen 💌\n/hug a big hug on my screen 🤗\n/home &lt;date&gt; count down the days until you're home 🚢\n"
-        "/teach &lt;word&gt; teach me to say something 🦜 · /words\n"
-        "/catch play Feather Catch against Haruki's Seed Rain score 🌻\n/trick I show you a trick I learned ✨\n"
-        "/draw &lt;idea&gt; I draw a pixel picture 🎨\n/hearts /fireworks /sakura /rain ✨\n\n"
-        "<b>Just for fun</b>\n/song &lt;idea&gt; I compose a whistle 🎶\n/diary my day · /haiku a poem\n"
-        "…or simply chat with me!")
+# Every command once: (command, argument hint, menu description, help section, partner-only). The bot menu, /help and
+# the persona's list of things the person can do are all generated from this, so they can't drift apart.
+COMMANDS = [
+    ("status", "", "How is Okame doing?", "care", False),
+    ("photo", "", "A picture of Okame's screen", "care", False),
+    ("feed", "", "Seed 🌻", "care", False), ("treat", "", "Millet treat 🌾", "care", False),
+    ("scritch", "", "Head scritches 🥰", "care", False), ("bath", "", "Clean the cage 🛁", "care", False),
+    ("vet", "", "Visit the vet 🩺", "care", False), ("cover", "", "Cover / uncover the cage 🌙", "care", False),
+    ("note", "<text>", "A love note on Okame's screen 💌", "screen", False),
+    ("hug", "", "A big hug on Okame's screen 🤗", "screen", False),
+    ("home", "<date>", "Countdown to coming home 🚢", "screen", False),
+    ("teach", "<word>", "Teach Okame a word 🦜", "screen", False),
+    ("words", "", "Words Okame can say", "screen", False),
+    ("catch", "", "Feather Catch: beat Haruki's score 🌻", "screen", False),
+    ("trick", "", "Okame shows a trick ✨", "screen", False),
+    ("draw", "<idea>", "Okame draws a pixel picture 🎨", "screen", False),
+    ("hearts", "", "Hearts on the screen 💛", "screen", False), ("fireworks", "", "Fireworks ✨", "screen", False),
+    ("sakura", "", "Falling sakura 🌸", "screen", False), ("rain", "", "Rain on the screen ☔", "screen", False),
+    ("song", "<idea>", "Okame composes a whistle 🎶", "fun", False),
+    ("diary", "", "Okame's diary 📔", "fun", False), ("haiku", "", "A haiku 🍃", "fun", False),
+    ("seeds", "<n>", "Send seeds for the bird shop 🌻", "ship", True),
+    ("update", "", "Install new firmware now 🪶", "ship", True),
+    ("help", "", "Everything Okame can do", "fun", False),
+]
+SECTIONS = [("care", "Look after me"), ("screen", "Make my screen sparkle"), ("fun", "Just for fun"), ("ship", "From the ship")]
+
+
+def bot_menu(partner):
+    return [{"command": c, "description": d} for c, _, d, _, only in COMMANDS if partner or not only]
+
+
+def help_text(partner):
+    out = ["<b>オカメ Okame</b>, your pocket bird 🐦💛"]
+    for key, title in SECTIONS:
+        lines = [f"/{c}{' ' + esc(a) if a else ''} {d}" for c, a, d, sec, only in COMMANDS
+                 if sec == key and c != "help" and (partner or not only)]
+        if lines:
+            out.append(f"\n<b>{title}</b>\n" + "\n".join(lines))
+    out.append("\n…or simply chat with me!")
+    return "\n".join(out)
+
+
+def command_list():
+    return ", ".join(f"/{c}" for c, _, _, sec, only in COMMANDS if sec in ("care", "screen") and not only and c not in ("status", "photo", "words"))
 
 
 async def handle(msg):
@@ -435,7 +515,7 @@ async def handle(msg):
     arg = arg.strip()
 
     if cmd in ("/start", "/help"):
-        return await say(chat, HELP)
+        return await say(chat, help_text(chat in {p["chat_id"] for p in partners()}))
     if cmd == "/status":
         return await show(chat, status_caption())
     if cmd == "/photo":
@@ -509,7 +589,7 @@ async def handle(msg):
                                "the phone page, once a day for three days.")
     if cmd == "/diary":
         await tg("sendChatAction", chat_id=chat, action="typing")
-        return await say(chat, esc(await ai_diary() or "Dear diary… I forgot what happened. ピヨ"))
+        return await say(chat, esc(await ai_diary(name) or "Dear diary… I forgot what happened. ピヨ"))
     if cmd == "/haiku":
         await tg("sendChatAction", chat_id=chat, action="typing")
         return await say(chat, esc(await ai_haiku() or "ピヨピヨ…"))
@@ -517,9 +597,23 @@ async def handle(msg):
         return await say(chat, "I don't know that trick yet 🐦 /help")
     if text:
         await tg("sendChatAction", chat_id=chat, action="typing")
-        reply = await ai_chat(name, text)
+        reply = await ai_chat(chat, name, text)
         event(name, f"chatted: {text[:40]}")
         return await say(chat, esc(reply or "ピヨ? *tilts head*"))
+
+
+PAIR_CODES_PER_HOUR, PAIR_FAILS_PER_HOUR = 3, 10  # across every chat: a 4-digit code must not be guessable
+
+
+def rate_ok(key, limit):
+    """True (and counted) when fewer than `limit` things happened under `key` in the last hour."""
+    now = time.time()
+    stamps = [s for s in kv_get(key, []) if now - s < 3600]
+    if len(stamps) >= limit:
+        kv_set(key, stamps)
+        return False
+    kv_set(key, stamps + [now])
+    return True
 
 
 async def pairing(chat, name, lang, text):
@@ -530,12 +624,12 @@ async def pairing(chat, name, lang, text):
             db.execute("delete from pairing where chat_id=?", (chat,))
             enqueue("pairdone", {}, chat)
             event(name, "became my friend on Telegram")
-            await show(chat, f"🎉 We're friends now, {esc(name)}! ピヨピヨ\n\n" + HELP)
+            await show(chat, f"🎉 We're friends now, {esc(name)}! ピヨピヨ\n\n" + help_text(False))
             return
         tries = p["tries"] + 1
-        if tries >= 5:
+        if not rate_ok("pair_fails", PAIR_FAILS_PER_HOUR) or tries >= 5:
             db.execute("delete from pairing where chat_id=?", (chat,))
-            return await say(chat, "Too many wrong codes 🙈 Send /start for a new one.")
+            return await say(chat, "Too many wrong codes 🙈 Try again in an hour with /start.")
         db.execute("update pairing set tries=? where chat_id=?", (tries, chat))
         return await say(chat, "That's not the code on my screen 🤔 Try again?")
     # A one-time invite link (t.me/<bot>?start=<token>) skips the screen code: an admin puts {"token", "until"} in kv "invite".
@@ -545,12 +639,14 @@ async def pairing(chat, name, lang, text):
         db.execute("insert or replace into users values(?,?,?,?)", (chat, name, lang, time.time()))
         enqueue("pairdone", {}, chat)
         event(name, "became my friend on Telegram")
-        return await show(chat, f"🎉 We're friends now, {esc(name)}! ピヨピヨ\n\n" + HELP)
+        return await show(chat, f"🎉 We're friends now, {esc(name)}! ピヨピヨ\n\n" + help_text(False))
     if len(users()) >= 6:
         return await say(chat, "ピヨ? I only talk to my family 🐦")
     last = kv_get(f"pairask:{chat}", 0)
     if time.time() - last < 30:
         return await say(chat, "Look at my screen for the code 👀")
+    if not rate_ok("pair_asks", PAIR_CODES_PER_HOUR):  # strangers can't keep the code flashing on her screen
+        return await say(chat, "My screen is busy right now 🙈 Try again in an hour.")
     kv_set(f"pairask:{chat}", time.time())
     code = f"{random.SystemRandom().randrange(10000):04d}"
     db.execute("insert or replace into pairing values(?,?,?,?)", (chat, code, time.time() + 900, 0))
@@ -562,29 +658,9 @@ async def pairing(chat, name, lang, text):
 
 async def telegram_loop():
     offset = kv_get("tg_offset", 0)
-    commands = [
-        {"command": "status", "description": "How is Okame doing?"},
-        {"command": "photo", "description": "A picture of Okame's screen"},
-        {"command": "feed", "description": "Seed 🌻"}, {"command": "treat", "description": "Millet treat 🌾"},
-        {"command": "scritch", "description": "Head scritches 🥰"}, {"command": "bath", "description": "Clean the cage 🛁"},
-        {"command": "vet", "description": "Visit the vet 🩺"}, {"command": "cover", "description": "Cover / uncover the cage 🌙"},
-        {"command": "note", "description": "A love note on Okame's screen 💌"},
-        {"command": "hug", "description": "A big hug on Okame's screen 🤗"},
-        {"command": "home", "description": "Countdown to coming home 🚢"},
-        {"command": "teach", "description": "Teach Okame a word 🦜"},
-        {"command": "words", "description": "Words Okame can say"},
-        {"command": "catch", "description": "Feather Catch: beat Haruki's score 🌻"},
-        {"command": "draw", "description": "Okame draws a pixel picture 🎨"},
-        {"command": "hearts", "description": "Hearts on the screen 💛"}, {"command": "fireworks", "description": "Fireworks ✨"},
-        {"command": "sakura", "description": "Falling sakura 🌸"}, {"command": "song", "description": "Okame composes a whistle 🎶"},
-        {"command": "diary", "description": "Okame's diary 📔"}, {"command": "haiku", "description": "A haiku 🍃"},
-        {"command": "trick", "description": "Okame shows a trick ✨"},
-        {"command": "help", "description": "Everything Okame can do"}]
-    await tg("setMyCommands", commands=commands)
-    for chat in CFG.get("partner_chats", []):  # Matthieu's menu also has the update button; Haruki's stays simple
-        await tg("setMyCommands", commands=commands + [{"command": "seeds", "description": "Send seeds for the bird shop 🌻"},
-                                                       {"command": "update", "description": "Install new firmware now 🪶"}],
-                 scope={"type": "chat", "chat_id": chat})
+    await tg("setMyCommands", commands=bot_menu(False))
+    for chat in CFG.get("partner_chats", []):  # Matthieu's menu also has the ship's buttons; Haruki's stays simple
+        await tg("setMyCommands", commands=bot_menu(True), scope={"type": "chat", "chat_id": chat})
     await tg("setMyShortDescription", short_description="Okame オカメ, a pocket bird living on a little pixel screen 🐦💛")
     await tg("setMyDescription", description="ピヨ! I'm Okame, a tiny bird who lives on a little screen next to "
              "Haruki's laptop. Feed me, play with me and send notes that pop up on my screen. Press Start to become "
@@ -594,32 +670,67 @@ async def telegram_loop():
             async with session.get(f"{API}/getUpdates", params={"offset": offset, "timeout": 50},
                                    timeout=aiohttp.ClientTimeout(total=70)) as r:
                 data = await r.json()
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
             await asyncio.sleep(3)
+            continue
+        except Exception:
+            log.exception("getUpdates failed")
+            await asyncio.sleep(5)
+            continue
+        if not data.get("ok"):  # 401 (bad token) or 409 (another instance polling): don't spin
+            log.warning("getUpdates: %s", data.get("description", "not ok"))
+            await asyncio.sleep(5)
             continue
         for upd in data.get("result", []):
             offset = upd["update_id"] + 1
             kv_set("tg_offset", offset)
             if "message" in upd:
-                asyncio.create_task(safe(handle(upd["message"])))
+                spawn(handle(upd["message"]), upd["message"].get("chat", {}).get("id"))
             elif "callback_query" in upd:
-                asyncio.create_task(safe(on_callback(upd["callback_query"])))
+                spawn(on_callback(upd["callback_query"]))
 
 
-async def safe(coro):
+TASKS = set()  # asyncio only keeps weak references: a running task with no other reference can be collected
+
+
+def spawn(coro, chat=None):
+    t = asyncio.create_task(safe(coro, chat))
+    TASKS.add(t)
+    t.add_done_callback(TASKS.discard)
+    return t
+
+
+async def safe(coro, chat=None):
     try:
         await coro
     except Exception:
         log.exception("handler failed")
+        if chat:
+            try:
+                await say(chat, "ピヨ?… something went wrong on my side. Try again in a moment 🙈")
+            except Exception:
+                pass
 
 # ---------------------------------------------------------------------------------------- egg API
 
 
 def pending():
     # A delivered command is only sent again when the egg hasn't confirmed it after 5 minutes (it may have rebooted).
+    # Notes, hugs, care and seeds wait as long as it takes (the laptop may stay closed for weeks); a pairing code
+    # that nobody could type in time is dropped instead of flashing up days later.
+    now = time.time()
+    for kind, ttl in EXPIRE.items():
+        db.execute("update queue set done=?, result='expired' where kind=? and done is null and created < ?",
+                   (now, kind, now - ttl))
     rows = db.execute("select * from queue where done is null and (delivered is null or delivered < ?) "
-                      "order by id limit 8", (time.time() - 300,)).fetchall()
+                      "order by id limit 8", (now - 300,)).fetchall()
     return [{"id": r["id"], "type": r["kind"], **json.loads(r["payload"])} for r in rows]
+
+
+def prune():
+    """Once a day: finished commands and old events go after a week."""
+    db.execute("delete from queue where done is not null and done < ?", (time.time() - 7 * 86400,))
+    db.execute("delete from events where at < ?", (time.time() - 7 * 86400,))
 
 
 async def sync(request):
@@ -635,19 +746,19 @@ async def sync(request):
         if isinstance(body["state"].get("life"), dict) and "alarm" in body["state"]["life"]:
             alarm_set(body["state"]["life"]["alarm"])  # the egg's saved alarm is the truth (events can be lost)
         kv_set("state", body["state"])
-        await notice_changes(before, body["state"])
+        spawn(notice_changes(before, body["state"]))  # Telegram never slows the egg's sync down
     if body.get("frame"):
         device["frame"] = body["frame"]
         kv_set("frame", body["frame"])
     for ack in body.get("acks", []):
-        await acked(ack)
+        spawn(acked(ack))
     for e in body.get("events", [])[:16]:
         if isinstance(e, dict):
-            asyncio.create_task(safe(on_event(e)))
+            spawn(on_event(e))
     if fw_before and device["state"].get("fw") != fw_before:
-        asyncio.create_task(safe(fw_changed(fw_before)))
+        spawn(fw_changed(fw_before))
     if away > 300 or device["state"].get("fw") != fw_before:
-        asyncio.create_task(safe(on_connect()))
+        spawn(on_connect())
     cmds = pending()
     if not cmds and body.get("wait"):
         new_command.clear()
@@ -821,7 +932,8 @@ async def lcd_word(text):
     lcd = to_lcd_text(text).replace("\x01", "").strip()
     if len(lcd) < len(re.sub(r"\s", "", text)) // 2 or not lcd:
         romaji = await ask("Convert the user's word or short phrase to Hepburn romaji. Reply with the romaji only, "
-                           "plain ASCII letters and spaces, no punctuation.", text, effort="low", max_tokens=60)
+                           "plain ASCII letters and spaces, no punctuation.", text, effort="low", max_tokens=60,
+                           model=CHEAP_MODEL)
         lcd = to_lcd_text(romaji or "")
     return lcd[:24].strip()
 
@@ -903,10 +1015,10 @@ async def fetch_weather():
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
             cur = (await resp.json())["current"]
-    except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, ValueError):
+        temp = round(cur["temperature_2m"])
+        return {"kind": classify_weather(int(cur["weather_code"]), temp), "temp": temp, "place": w.get("place", "")}
+    except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, ValueError, TypeError):
         return None
-    temp = round(cur["temperature_2m"])
-    return {"kind": classify_weather(int(cur["weather_code"]), temp), "temp": temp, "place": w.get("place", "")}
 
 
 async def send_weather(force=False):
@@ -921,10 +1033,13 @@ async def send_weather(force=False):
 
 async def weather_loop():
     while True:
-        wx = await fetch_weather()
-        if wx:
-            kv_set("wx", wx)
-            await send_weather()
+        try:
+            wx = await fetch_weather()
+            if wx:
+                kv_set("wx", wx)
+                await send_weather()
+        except Exception:
+            log.exception("weather failed")
         await asyncio.sleep(30 * 60)
 
 
@@ -1006,7 +1121,7 @@ async def catch_start(chat, name):
     g["msg"] = (res.get("result") or {}).get("message_id")
     g["shown"] = time.time()  # the clock starts once the board is on its way to his phone
     catches[chat] = g
-    asyncio.create_task(safe(catch_timeout(g, 0)))
+    spawn(catch_timeout(g, 0))
 
 
 async def catch_timeout(g, rnd):
@@ -1017,7 +1132,7 @@ async def catch_timeout(g, rnd):
 
 async def on_callback(cq):
     arrived = time.time()  # judge the tap by when it reached us, not after our own reply round-trip
-    asyncio.create_task(safe(tg("answerCallbackQuery", callback_query_id=cq["id"])))  # don't let the reply delay it
+    spawn(tg("answerCallbackQuery", callback_query_id=cq["id"]))  # don't let the reply delay it
     parts = (cq.get("data") or "").split(":")
     if len(parts) != 4 or parts[0] != "catch":
         return
@@ -1044,7 +1159,7 @@ async def catch_resolve(g, hit, note=""):
     await tg("editMessageText", chat_id=g["chat"], message_id=g["msg"], text=catch_text(g, note), parse_mode="HTML",
              reply_markup=catch_board(g))
     g["shown"] = time.time()
-    asyncio.create_task(safe(catch_timeout(g, g["round"])))
+    spawn(catch_timeout(g, g["round"]))
 
 
 async def catch_end(g, note):
@@ -1306,25 +1421,34 @@ async def notice_changes(before, after):
 
 async def mornings():
     while True:
-        now = datetime.now(TZ)
-        if now.hour == 8 and kv_get("morning", "") != now.date().isoformat():
-            kv_set("morning", now.date().isoformat())
-            n = home_days()
-            partner_ids = {p["chat_id"] for p in partners()}
-            for u in users():
-                me = u["chat_id"] in partner_ids
-                extra = (f"\n🏠 {'You come' if me else 'Matthieu comes'} home TODAY! 🎉" if n == 0 else
-                         f"\n🚢 {n} day{'s' * (n != 1)} until {'you are' if me else 'Matthieu is'} home"
-                         if n and n > 0 else "")
-                greet = "おはよう！" if u["lang"] == "ja" else "Goedemorgen!" if u["lang"] == "nl" else "Good morning!"
-                await show(u["chat_id"], f"☀️ {greet} ピヨ\n" + status_caption() + extra)
-            await birthdays(now)
-        await alarms(now)
-        if now.hour == 20 and kv_get("evening", "") != now.date().isoformat():
-            kv_set("evening", now.date().isoformat())
-            from datetime import timedelta
-            await eve_reminders(now.date() + timedelta(days=1))
+        try:
+            await daily_tick(datetime.now(TZ))
+        except Exception:
+            log.exception("daily tick failed")
         await asyncio.sleep(60)
+
+
+async def daily_tick(now):
+    """Once a minute: the morning message, the alarm, the evening reminders, and a little tidying at night."""
+    if now.hour == 8 and kv_get("morning", "") != now.date().isoformat():
+        kv_set("morning", now.date().isoformat())
+        n = home_days()
+        partner_ids = {p["chat_id"] for p in partners()}
+        for u in users():
+            me = u["chat_id"] in partner_ids
+            extra = (f"\n🏠 {'You come' if me else 'Matthieu comes'} home TODAY! 🎉" if n == 0 else
+                     f"\n🚢 {n} day{'s' * (n != 1)} until {'you are' if me else 'Matthieu is'} home"
+                     if n and n > 0 else "")
+            greet = "おはよう！" if u["lang"] == "ja" else "Goedemorgen!" if u["lang"] == "nl" else "Good morning!"
+            await show(u["chat_id"], f"☀️ {greet} ピヨ\n" + status_caption() + extra)
+        await birthdays(now)
+    await alarms(now)
+    if now.hour == 20 and kv_get("evening", "") != now.date().isoformat():
+        kv_set("evening", now.date().isoformat())
+        await eve_reminders(now.date() + timedelta(days=1))
+    if now.hour == 4 and kv_get("pruned", "") != now.date().isoformat():
+        kv_set("pruned", now.date().isoformat())
+        prune()
 
 
 async def health(request):
@@ -1344,7 +1468,7 @@ async def claim(request):
 async def main():
     global session
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    session = aiohttp.ClientSession()
+    session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
     app = web.Application(client_max_size=64 * 1024)
     app.router.add_post("/v1/sync", sync)
     app.router.add_get("/v1/health", health)

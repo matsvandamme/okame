@@ -1,0 +1,23 @@
+# /etc/systemd/system/okame-relay.service: the Telegram bot and the egg's mailbox.
+# Files it needs live in /opt/okame (see relay/README.md); the code is /opt/okame/app/okame_relay.py.
+[Unit]
+Description=Okame relay (Telegram bot + egg mailbox)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=okame
+Group=okame
+WorkingDirectory=/opt/okame
+Environment=OKAME_HOME=/opt/okame
+ExecStart=/opt/okame/venv/bin/python /opt/okame/app/okame_relay.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/okame
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -38,6 +38,7 @@ async def fake_tg(method, **k):
     return {"ok": True, "result": {"message_id": 1}}
 
 
+REAL_TG = r.tg  # the real one, for the timeout tests below
 r.say, r.show, r.tg = fake_say, fake_show, fake_tg
 for chat, name in ((MATTHIEU, "Matthieu"), (HARUKI, "Haruki")):
     r.db.execute("insert into users values(?,?,?,?)", (chat, name, "en", time.time()))
@@ -293,6 +294,107 @@ async def t_world():
     check("what's new 0.7: once each, seeds for Matthieu", sum("bird shop" in x for x in said(HARUKI)) == 1
           and sum("/seeds" in x for x in said(MATTHIEU)) == 1 and not any("/seeds" in x for x in said(HARUKI)))
 TESTS.append(t_world)
+
+
+class FakeResponse:
+    def __init__(self, data=None, exc=None):
+        self.data, self.exc = data, exc
+    async def __aenter__(self):
+        if self.exc:
+            raise self.exc
+        return self
+    async def __aexit__(self, *a):
+        return False
+    async def json(self):
+        return self.data
+
+
+class FakeSession:
+    """Stands in for aiohttp: each post() pops the next scripted reply."""
+    def __init__(self, replies):
+        self.replies, self.calls = list(replies), 0
+    def post(self, url, **k):
+        self.calls += 1
+        return self.replies.pop(0)
+    def get(self, url, **k):
+        return self.post(url, **k)
+
+
+async def t_hardening():
+    # Telegram: a timeout is a warning, not a crash; flood control is honoured once; 401 gives up.
+    r.session = FakeSession([FakeResponse(exc=asyncio.TimeoutError())])
+    check("tg: a timeout returns {}", await REAL_TG("sendMessage", chat_id=1, text="x") == {})
+    r.session = FakeSession([FakeResponse({"ok": False, "parameters": {"retry_after": 0}, "description": "flood"}),
+                             FakeResponse({"ok": True, "result": 1})])
+    check("tg: retries once after flood control", (await REAL_TG("sendMessage", chat_id=1, text="x")).get("result") == 1
+          and r.session.calls == 2)
+    r.session = FakeSession([FakeResponse({"ok": False, "description": "Unauthorized"})])
+    check("tg: a plain failure gives up", await REAL_TG("sendMessage", chat_id=1, text="x") == {})
+    # A background loop survives an exception.
+    real_fetch = r.fetch_weather
+    async def boom():
+        raise RuntimeError("no weather today")
+    r.fetch_weather = boom
+    try:
+        await asyncio.wait_for(r.weather_loop(), 0.2)
+        survived = False
+    except asyncio.TimeoutError:
+        survived = True  # still looping (asleep until the next half hour) instead of dead
+    r.fetch_weather = real_fetch
+    check("weather loop survives an exception", survived)
+    # Queue: pairing codes expire, settings supersede, notes wait forever.
+    r.db.execute("delete from queue")
+    r.enqueue("pair", {"code": "1234"}, 300)
+    r.db.execute("update queue set created=created-1000 where kind='pair'")
+    r.enqueue("msg", {"from": "M", "text": "old note", "lcd": "OLD"}, MATTHIEU)
+    r.db.execute("update queue set created=created-40*86400 where kind='msg'")
+    r.enqueue("wx", {"kind": "rain", "temp": 10}); r.enqueue("wx", {"kind": "snow", "temp": -1})
+    kinds = sorted(c["type"] for c in r.pending())
+    check("expired code dropped, old note kept, one weather", kinds == ["msg", "wx"]
+          and r.db.execute("select result from queue where kind='pair'").fetchone()[0] == "expired"
+          and [c for c in r.pending() if c["type"] == "wx"][0]["kind"] == "snow")
+    # Per-chat memory and translation direction.
+    asked = []
+    real_ask = r.ask
+    async def fake_ask(system, prompt, **k):
+        asked.append(prompt); return "piyo"
+    r.ask = fake_ask
+    await r.ai_chat(MATTHIEU, "Matthieu", "secret plan")
+    await r.ai_chat(HARUKI, "Haruki", "hello")
+    check("each chat has its own memory", "secret plan" not in asked[-1] and r.kv_get(f"chat_hist:{HARUKI}")[0]["text"] == "hello")
+    await r.ai_translate("おはよう", "en")
+    await r.ai_translate("good morning", "ja")
+    check("translation direction follows the script", "into English" in asked[-2] and "into Japanese" in asked[-1])
+    r.ask = real_ask
+    # Pairing: three codes an hour across all strangers, then a polite no.
+    sent.clear()
+    r.kv_set("pair_asks", []); r.kv_set("pair_fails", [])
+    for stranger in (901, 902, 903, 904):
+        await r.pairing(stranger, "Stranger", "en", "/start")
+    check("pairing codes are limited per hour", "busy" in said(904)[-1] and len(queued("pair")) >= 3)
+    # The help text and the menu come from one table.
+    check("help and menu agree", all(f"/{c['command']}" in r.help_text(True) for c in r.bot_menu(True) if c["command"] != "help")
+          and "/seeds" not in r.help_text(False) and "/seeds" in r.help_text(True))
+    check("the persona lists real commands", "/feed" in r.persona() and "/seeds" not in r.persona())
+    # /v1/sync through a real HTTP round trip.
+    from aiohttp import web
+    from aiohttp.test_utils import TestServer, TestClient
+    app = web.Application(); app.router.add_post("/v1/sync", r.sync)
+    r.db.execute("delete from queue")
+    qid = r.enqueue("act", {"action": "seed", "by": "M"}, MATTHIEU)
+    async with TestClient(TestServer(app)) as c:
+        bad = await c.post("/v1/sync", json={}, headers={"X-Okame-Key": "nope"})
+        ok = await c.post("/v1/sync", json={"state": {"fw": "0.7.0", "name": "Manon"}, "fw": "0.7.0"},
+                          headers={"X-Okame-Key": "a" * 64})
+        body = await ok.json()
+        again = await (await c.post("/v1/sync", json={"acks": [{"id": qid, "result": "ok"}]}, headers={"X-Okame-Key": "a" * 64})).json()
+    await asyncio.sleep(0.05)
+    row = r.db.execute("select delivered, done, result from queue where id=?", (qid,)).fetchone()
+    check("sync: wrong key refused, command delivered once, ack recorded", bad.status == 401 and ok.status == 200
+          and [x["id"] for x in body["commands"]] == [qid] and not [x for x in again["commands"] if x["type"] == "act"]
+          and row["done"] and row["result"] == "ok")  # the second poll only carries the reconnect settings
+    check("sync stores the egg's state", r.device["state"].get("name") == "Manon")
+TESTS.append(t_hardening)
 
 if __name__ == "__main__":
     asyncio.run(main())

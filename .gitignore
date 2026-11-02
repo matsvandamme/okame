@@ -1,17 +1,20 @@
+# build output
 .pio/
 out/
-include/secrets.h
-*.key
-.DS_Store
+src/web_assets.h
 __pycache__/
-render/out/
-manual/out/
+
+# private: the printed booklet and the gift letter never go public
+manual/
+
+# the 3D case and renders (large local outputs)
 case/out/
 case/.venv/
-case/out/
 case/ref/
 render/out/
-src/web_assets.h
+
+# local notes and secrets
 spec-okame.md
 .okame.interview.json
-manual/
+*.key
+.DS_Store
