@@ -64,7 +64,7 @@ def shoot(pg, base, prefix):
     pg.wait_for_timeout(1500)
     pg.screenshot(path=str(out / f"{prefix}_page.png"), full_page=True)
     for tab in TABS:
-        btn = pg.locator(f'[data-tab="{tab}"]')
+        btn = pg.locator(f'.tab[data-tab="{tab}"]')
         if not btn.count():
             continue
         btn.click()

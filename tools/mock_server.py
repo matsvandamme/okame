@@ -15,6 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 PAGE = (ROOT / "out" / "web" / "index.html").read_bytes()
 FRAMES = (ROOT / "out" / "web" / "frames.txt").read_text().split()
 ICON = (ROOT / "web" / "apple-touch-icon.png").read_bytes()
+CSP = (ROOT / "out" / "web" / "csp.txt").read_text()  # written by tools/embed_web.py next to the built page
 SETUP = "--setup" in sys.argv
 STATE = {
     "name": "Mochi" if "--named" in sys.argv else "", "stage": "adult", "variant": "pearl", "hunger": 3,
@@ -74,8 +75,7 @@ class H(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         if ctype == "text/html":  # same policy as the dongle (src/web.cpp), so blocked loads show up here too
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-                             "script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data:")
+            self.send_header("Content-Security-Policy", CSP)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

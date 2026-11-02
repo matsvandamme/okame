@@ -38,6 +38,142 @@ CHEAP_MODEL = "claude-haiku-5-5"  # translation and romaji don't need the big mo
 LCD_W, LCD_H = 40, 20
 log = logging.getLogger("okame")
 
+# --- generated from assets/tables.json by tools/gen_tables.py: do not edit ---
+TABLES = {'species': [{'key': 'cockatiel',
+              'en': 'Cockatiel',
+              'jp': 'オカメインコ',
+              'sprite': 'adult_idle',
+              'sub': 'オカメ · POCKET COCKATIEL',
+              'voice': 1.0},
+             {'key': 'budgie',
+              'en': 'Budgie',
+              'jp': 'セキセイインコ',
+              'sprite': 'budgie_adult_idle',
+              'sub': 'セキセイ · POCKET BUDGIE',
+              'voice': 1.18},
+             {'key': 'owl',
+              'en': 'Owl',
+              'jp': 'フクロウ',
+              'sprite': 'owl_adult_idle',
+              'sub': 'フクロウ · POCKET OWL',
+              'voice': 0.3}],
+ 'friends': [{'key': 'budgie',
+              'en': 'Budgie',
+              'jp': 'セキセイインコ',
+              'sprite': 'fr_budgie',
+              'species': 'budgie',
+              'fact': 'A chatty little parakeet. Budgies bob their heads to say hello.',
+              'hint': 'Drops by in the daytime.',
+              'hintJp': 'ひるまに あそびにくるよ',
+              'news': '🦜 A budgie dropped by to visit me today! We bobbed our heads at each other. New '
+                      'friend ✨'},
+             {'key': 'pigeon',
+              'en': 'Belgian racing pigeon',
+              'jp': 'ハト',
+              'sprite': 'fr_pigeon',
+              'fact': "Belgium is the home of pigeon racing. This one flies Matthieu's notes and hugs to "
+                      'you.',
+              'hint': "Comes with Matthieu's next note.",
+              'hintJp': 'マチューの おてがみと いっしょに',
+              'news': "🕊️ Meet my new friend: a Belgian racing pigeon! From now on it flies Matthieu's notes "
+                      'and hugs to my screen 💌'},
+             {'key': 'enaga',
+              'en': 'Shima-enaga',
+              'jp': 'シマエナガ',
+              'sprite': 'fr_enaga',
+              'fact': 'The snow fairy of Hokkaido: a tiny white puff with a long tail.',
+              'hint': 'Comes in winter, or when it snows.',
+              'hintJp': 'ふゆや ゆきの ひに くるよ',
+              'news': '❄️ A shima-enaga came to visit: a tiny snow fairy from Hokkaido! We snuggled ☃️'},
+             {'key': 'mejiro',
+              'en': 'Mejiro',
+              'jp': 'メジロ',
+              'sprite': 'fr_mejiro',
+              'fact': 'A green bird with white eye-rings that sips nectar from plum blossoms.',
+              'hint': 'Comes in plum and sakura season.',
+              'hintJp': 'うめと さくらの きせつに',
+              'news': '🌸 A mejiro sang for me from a plum branch today! New friend ✨'},
+             {'key': 'owl',
+              'en': 'Lucky owl',
+              'jp': 'フクロウ',
+              'sprite': 'fr_owl',
+              'species': 'owl',
+              'fact': "フクロウ sounds like 不苦労, 'no hardship': a lucky charm in Japan.",
+              'hint': 'Comes some evenings, and after a 大吉.',
+              'hintJp': 'よると だいきちの あとに',
+              'news': '🦉 A lucky owl came to sit with me! フクロウ, 不苦労: no hardship ✨'}],
+ 'places': [{'key': 'park',
+             'en': 'Park',
+             'jp': 'こうえん',
+             'sprite': 'pl_tree',
+             'minDays': 0,
+             'emoji': '🌳',
+             'at': 'at the park',
+             'lcd': 'THE PARK'},
+            {'key': 'cafe',
+             'en': 'Café',
+             'jp': 'カフェ',
+             'sprite': 'pl_cup',
+             'minDays': 0,
+             'emoji': '☕',
+             'at': 'at the café',
+             'lcd': 'THE CAFE'},
+            {'key': 'beach',
+             'en': 'Beach',
+             'jp': 'うみ',
+             'sprite': 'umbrella',
+             'minDays': 7,
+             'emoji': '🏖️',
+             'at': 'at the beach',
+             'lcd': 'THE BEACH'},
+            {'key': 'shrine',
+             'en': 'Shrine',
+             'jp': 'じんじゃ',
+             'sprite': 'pl_torii',
+             'minDays': 7,
+             'emoji': '⛩️',
+             'at': 'at the shrine',
+             'lcd': 'THE SHRINE'},
+            {'key': 'windmill',
+             'en': 'Windmill',
+             'jp': 'ふうしゃ',
+             'sprite': 'pl_mill_body',
+             'minDays': 14,
+             'emoji': '🌷',
+             'at': 'at the windmill',
+             'lcd': 'THE WINDMILL'},
+            {'key': 'frites',
+             'en': 'Frietkot',
+             'jp': 'フリッツ',
+             'sprite': 'pl_frites',
+             'minDays': 14,
+             'emoji': '🍟',
+             'at': 'at the frietkot',
+             'lcd': 'THE FRIETKOT'}],
+ 'toys': [{'key': 'swing', 'en': 'Swing', 'jp': 'ブランコ', 'sprite': 'toy_swing', 'price': 30},
+          {'key': 'bell', 'en': 'Bell', 'jp': 'すず', 'sprite': 'toy_bell', 'price': 20},
+          {'key': 'mirror', 'en': 'Mirror', 'jp': 'かがみ', 'sprite': 'toy_mirror', 'price': 25},
+          {'key': 'ladder', 'en': 'Ladder', 'jp': 'はしご', 'sprite': 'toy_ladder', 'price': 30},
+          {'key': 'perch', 'en': 'Perch', 'jp': 'とまりぎ', 'sprite': 'toy_perch', 'price': 20}],
+ 'hats': [{'key': 'none', 'en': 'None', 'sprite': None, 'how': ''},
+          {'key': 'bow', 'en': 'Bow tie', 'sprite': 'hat_bow', 'how': 'first scritch'},
+          {'key': 'sunglasses', 'en': 'Sunglasses', 'sprite': 'hat_crown', 'how': 'win 3 games'},
+          {'key': 'scarf', 'en': 'Scarf', 'sprite': 'hat_beret', 'how': '20 care actions'},
+          {'key': 'medal', 'en': 'Heart medal', 'sprite': 'hat_party', 'how': '15 seeds in Seed Rain'},
+          {'key': 'sakura', 'en': 'Sakura flower', 'sprite': 'hat_sakura', 'how': 'teach it a song'},
+          {'key': 'omamori',
+           'en': 'Omamori charm',
+           'sprite': 'hat_omamori',
+           'how': 'collect all six fortunes'},
+          {'key': 'hachimaki',
+           'en': 'Study headband',
+           'sprite': 'hat_hachimaki',
+           'how': 'ten focus sessions'}],
+ 'prices': {'treat': 5, 'hat': 40},
+ 'omikuji': ['大吉', '中吉', '小吉', '吉', '末吉', '凶'],
+ 'partyDays': [7, 10, 30, 50, 100, 200, 365]}
+# --- end generated ---
+
 # ---------------------------------------------------------------------------------------- storage
 
 db = sqlite3.connect(f"{HOME}/okame.db", isolation_level=None)
@@ -243,7 +379,7 @@ feed or play, tell them the command ({commands})."""
 def species():
     """What hatched on the egg: a cockatiel unless a new egg was started as a budgie or an owl (0.5)."""
     sp = device["state"].get("species")
-    return sp if sp in ("budgie", "owl") else "cockatiel"
+    return sp if sp in {s["key"] for s in TABLES["species"]} else "cockatiel"
 
 
 def persona():
@@ -977,7 +1113,7 @@ async def resend_words():
             enqueue("word", {"text": w})
 
 
-OMIKUJI = ["大吉", "中吉", "小吉", "吉", "末吉", "凶"]
+OMIKUJI = TABLES["omikuji"]
 
 
 async def omikuji_drawn(e):
@@ -1204,13 +1340,7 @@ async def send_rival():
         enqueue("rival", {"score": best})
 
 
-FRIEND_NEWS = [
-    "🦜 A budgie dropped by to visit me today! We bobbed our heads at each other. New friend ✨",
-    "🕊️ Meet my new friend: a Belgian racing pigeon! From now on it flies Matthieu's notes and hugs to my screen 💌",
-    "❄️ A shima-enaga came to visit: a tiny snow fairy from Hokkaido! We snuggled ☃️",
-    "🌸 A mejiro sang for me from a plum branch today! New friend ✨",
-    "🦉 A lucky owl came to sit with me! フクロウ, 不苦労: no hardship ✨",
-]
+FRIEND_NEWS = [f["news"] for f in TABLES["friends"]]
 
 
 async def friend_met(e):
@@ -1223,9 +1353,7 @@ async def friend_met(e):
         await show(u["chat_id"], FRIEND_NEWS[i])
 
 
-PLACES = [("🌳", "at the park", "THE PARK"), ("☕", "at the café", "THE CAFE"), ("🏖️", "at the beach", "THE BEACH"),
-          ("⛩️", "at the shrine", "THE SHRINE"), ("🌷", "at the windmill", "THE WINDMILL"),
-          ("🍟", "at the frietkot", "THE FRIETKOT")]
+PLACES = [(p["emoji"], p["at"], p["lcd"]) for p in TABLES["places"]]
 
 
 async def outing(e):

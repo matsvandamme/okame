@@ -87,6 +87,9 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .today p { margin: 4px 0 0; }
 .hug { flex-wrap: wrap; }
 .fuss { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 800; }
+.offline { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #fff; }
+.offline .big { font-size: 28px; } .offline small { display: block; font-weight: 600; color: #5a5440; }
+.offline #retryBtn { flex-basis: 100%; }
 .fuss .big { font-size: 28px; }
 .fuss small { display: block; opacity: .65; font-weight: 700; }
 .fuss .row { flex-basis: 100%; }
@@ -113,13 +116,13 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .away { font-weight: 800; background: #fff; border: 3px solid var(--ink); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
 .album { display: grid; gap: 8px; margin: 8px 0; }
 .album .friend canvas { width: 54px !important; }
-.days { display: flex; gap: 4px; flex-wrap: wrap; } .days button { flex: 1 0 36px; min-width: 36px; padding: 8px 0; }
+.days { display: flex; gap: 4px; flex-wrap: wrap; } .days button { flex: 1 0 38px; min-width: 38px; min-height: 44px; padding: 8px 0; }
 .days button[aria-pressed="true"] { background: var(--ink); color: var(--yellow); }
 .hug #hugBack { flex-basis: 100%; }
 .hug small { display: block; opacity: .65; font-weight: 700; }
-.btn.small { padding: 8px 10px; font-size: 13px; width: auto; flex: 0 0 auto; }
+.btn.small { padding: 10px 12px; min-height: 44px; font-size: 13px; width: auto; flex: 0 0 auto; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { border: 3px solid var(--ink); border-radius: 99px; background: #fff; padding: 6px 12px; font-weight: 900;
+.chip { border: 3px solid var(--ink); border-radius: 99px; background: #fff; padding: 10px 14px; min-height: 44px; font-weight: 900;
   font-size: 14px; box-shadow: 0 3px 0 var(--ink); cursor: pointer; }
 .chip.learning { border-style: dashed; box-shadow: none; }
 .chip:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
@@ -165,7 +168,7 @@ canvas.lcd { display: block; width: 100%; image-rendering: pixelated; border-rad
 .letter .from { font-size: 13px; font-weight: 700; opacity: .7; margin: 0 0 6px; }
 .letter .body { font-size: 20px; line-height: 28px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .letter .tr { font-size: 15px; line-height: 28px; margin: 4px 0 0; opacity: .75; white-space: pre-wrap; }
-.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
 .tab {
   font: inherit; font-weight: 800; font-size: 13px;
   border: 3px solid var(--ink); border-radius: 12px; background: var(--cream);
@@ -196,7 +199,8 @@ input[type=text], input[type=password], input[inputmode=numeric], select {
   border: 3px solid var(--ink); border-radius: 12px; padding: 10px 12px; background: #fff; color: var(--ink);
 }
 label { display: block; font-weight: 800; font-size: 13px; margin: 10px 0 4px; }
-.hint { font-size: 13px; line-height: 1.4; opacity: .8; margin: 6px 0 10px; }
+.hint { font-size: 13px; line-height: 1.4; color: #3d3828; margin: 6px 0 10px; }
+input[type=checkbox] { width: 28px; height: 28px; }
 .notes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .notes button { height: 54px; }
 .staff { display: flex; gap: 6px; min-height: 44px; align-items: flex-end; padding: 8px; border: 3px dashed var(--ink); border-radius: 12px; margin: 12px 0; background: #fff; }
@@ -238,7 +242,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="logo">Okame<small class="jp" id="logoSub">オカメ · POCKET COCKATIEL</small></div>
     <div class="head-right">
       <button class="love" id="loveBtn" aria-label="Send Matthieu a heart">💛</button>
-      <span class="pill" id="online"><span class="dot"></span>…</span>
+      <span class="pill" id="online" role="status"><span class="dot"></span>…</span>
     </div>
   </header>
 
@@ -248,11 +252,17 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="bezel"><canvas class="lcd" id="lcd" width="160" height="80" role="img" aria-label="Live screen of the dongle"></canvas></div>
     <div class="brand jp">オカメ · OKAME</div>
     <div class="status">
-      <span>Food <span class="hearts" id="food">♡♡♡♡</span></span>
-      <span>Joy <span class="hearts" id="joy">♡♡♡♡</span></span>
+      <span>Food <span class="hearts" id="food" aria-label="food 0 of 4">♡♡♡♡</span></span>
+      <span>Joy <span class="hearts" id="joy" aria-label="joy 0 of 4">♡♡♡♡</span></span>
       <span id="seedChip" hidden>🌻 <b id="seeds">0</b></span>
       <span id="wxChip" hidden></span>
     </div>
+  </section>
+
+  <section class="card offline" id="offlineCard" hidden role="alert">
+    <span class="big">💤</span>
+    <div style="flex:1"><b>Okame is napping.</b><small>No answer from the dongle: is the laptop closed, or this phone on another Wi-Fi?</small></div>
+    <button class="btn small" id="retryBtn">Try again</button>
   </section>
 
   <section class="card" id="nameCard" hidden>
@@ -287,7 +297,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
   </section>
 
   <section class="card words" id="wordsCard" hidden>
-    <h2>Okame can say… <span class="new">NEW</span> <span class="jp">ことば</span></h2>
+    <h2>Okame can say… <span class="new" data-since="0.5">NEW</span> <span class="jp">ことば</span></h2>
     <p class="hint">Matthieu taught these. Tap one and Okame says it on its screen.</p>
     <div class="chips" id="wordChips"></div>
   </section>
@@ -299,14 +309,16 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <p class="tr" id="noteTr" hidden></p>
   </section>
 
-  <nav class="tabs" role="tablist">
-    <button class="tab" role="tab" aria-selected="true" data-tab="care">Care<span class="jp">おせわ</span></button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="tune">Tune<span class="jp">うた</span></button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="photo">Photo<span class="jp">しゃしん</span></button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="settings">Settings<span class="jp">せってい</span></button>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" aria-selected="true" data-tab="care" aria-controls="tab-care">Care<span class="jp" lang="ja">おせわ</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="play" aria-controls="playCard">Play<span class="jp" lang="ja">あそぶ</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="world" aria-controls="shopCard">World<span class="jp" lang="ja">せかい</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="tune" aria-controls="tab-tune">Tune<span class="jp" lang="ja">うた</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="photo" aria-controls="tab-photo">Photo<span class="jp" lang="ja">しゃしん</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="settings" aria-controls="tab-settings">Settings<span class="jp" lang="ja">せってい</span></button>
   </nav>
 
-  <section class="card panel" id="tab-care">
+  <section class="card panel" id="tab-care" role="tabpanel">
     <h2><span id="title">Your bird</span> <span class="jp" id="meta"></span></h2>
     <div class="grid" id="careGrid"></div>
     <p class="hint" id="moodHint"></p>
@@ -314,7 +326,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <button class="btn dark wide" id="hatchBtn" hidden>🥚 Hatch a new egg</button>
   </section>
 
-  <section class="card panel-care" id="playCard">
+  <section class="card panel-card" id="playCard" data-tab="play" role="tabpanel">
     <h2>Play <span class="jp">あそぶ</span></h2>
     <p class="hint" id="playHint">Duet: whistle the melody back. Peekaboo: tap when it pops out. Seed Rain: catch the seeds! Janken: best of three. Dance: copy Okame's moves. Left or Right: guess which way it turns, like the very first Tamagotchi.</p>
     <div id="gamePick" class="row">
@@ -326,7 +338,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
       <button class="btn" id="startJanken">✊ Janken</button>
       <button class="btn" id="startDance">💃 Copy the dance</button>
     </div>
-    <button class="btn wide" id="startLR" style="margin-top:8px">⬅️➡️ Left or Right? <span class="new">NEW</span> <small id="bestLR" style="opacity:.6"></small></button>
+    <button class="btn wide" id="startLR" style="margin-top:8px">⬅️➡️ Left or Right? <span class="new" data-since="0.6">NEW</span> <small id="bestLR" style="opacity:.6"></small></button>
     <div id="gameLive" hidden>
       <canvas class="lcd mini" id="lcdMini" width="160" height="80"></canvas>
       <p class="hint" id="gameHint">…</p>
@@ -349,7 +361,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     </div>
   </section>
 
-  <section class="card panel-care" id="omikujiCard">
+  <section class="card panel-card" id="omikujiCard" data-tab="play" role="tabpanel">
     <h2>Omikuji <span class="jp">おみくじ</span></h2>
     <p class="hint" id="omiHint">Once a day, Okame shakes the shrine box and draws your fortune. Collect all six!</p>
     <button class="btn dark wide" id="omiBtn">⛩️ Draw today's fortune</button>
@@ -360,7 +372,7 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <div class="omiset" id="omiSet" aria-label="Fortunes collected"></div>
   </section>
 
-  <section class="card panel-care" id="focusCard">
+  <section class="card panel-card" id="focusCard" data-tab="play" role="tabpanel">
     <h2>Focus with Okame <span class="jp">いっしょにがんばろう</span></h2>
     <p class="hint" id="focusHint">Studying or working? Okame sits by its little laptop and works along with you. Notes wait until you're done.</p>
     <div class="row" id="focusPick">
@@ -374,8 +386,8 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <p class="hint" id="focusDone" style="margin-top:8px"></p>
   </section>
 
-  <section class="card panel-care" id="trainCard">
-    <h2>Training &amp; tricks <span class="new">NEW</span> <span class="jp">しつけ</span></h2>
+  <section class="card panel-card" id="trainCard" data-tab="care" role="tabpanel">
+    <h2>Training &amp; tricks <span class="new" data-since="0.6">NEW</span> <span class="jp">しつけ</span></h2>
     <p class="hint" id="trainHint">Now and then Okame fusses for no reason. A calm “no” teaches it manners, and every lesson unlocks a trick. Giving in with millet makes it happy, but it learns nothing.</p>
     <div class="row" style="justify-content:space-between"><span style="flex:0 0 auto;font-weight:800">Training</span><div class="dots" id="trainDots" style="flex:0 0 auto"><b></b><b></b><b></b><b></b></div></div>
     <div class="tricks" id="tricks"></div>
@@ -384,8 +396,8 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <p class="hint" id="ageHint" style="margin-top:6px"></p>
   </section>
 
-  <section class="card panel-care" id="clockCard">
-    <h2>Clock &amp; alarm <span class="new">NEW</span> <span class="jp">とけい</span></h2>
+  <section class="card panel-card" id="clockCard" data-tab="settings" role="tabpanel">
+    <h2>Clock &amp; alarm <span class="new" data-since="0.6">NEW</span> <span class="jp">とけい</span></h2>
     <div class="row">
       <button class="btn" id="clockShow">🕐 Show the clock</button>
       <label class="row" style="flex:1.4;font-weight:800;font-size:13px">Time on the covered cage <input type="checkbox" id="clockCover" style="flex:0 0 auto;width:22px;height:22px"></label>
@@ -397,8 +409,8 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <p class="hint" id="alarmHint" style="margin-top:8px">At that time Okame sends you a good-morning message on Telegram, so it works even when the laptop is closed. If the laptop is open, Okame also pops up on its screen (from under the cover too, before it goes back to sleep until you uncover it).</p>
   </section>
 
-  <section class="card panel-care" id="shopCard" hidden>
-    <h2>Bird shop <span class="new">NEW</span> <span class="jp">ことりやさん</span></h2>
+  <section class="card panel-card" id="shopCard" data-tab="world" role="tabpanel" hidden>
+    <h2>Bird shop <span class="new" data-since="0.7">NEW</span> <span class="jp">ことりやさん</span></h2>
     <p class="hint">Okame earns seeds 🌻 by being looked after, playing games, the daily omikuji, focusing with you and its parties. Spend them here.</p>
     <div class="row" style="justify-content:space-between"><b style="flex:0 0 auto">🌻 <span id="shopSeeds">0</span> seeds</b><small id="shopNote" style="flex:0 0 auto;opacity:.6"></small></div>
     <div class="shop" id="shop"></div>
@@ -407,35 +419,35 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <button class="btn dark wide" id="toyPlay" style="margin-top:10px">🎈 Play with the toy</button>
   </section>
 
-  <section class="card panel-care" id="outCard" hidden>
-    <h2>Outings <span class="new">NEW</span> <span class="jp">おでかけ</span></h2>
+  <section class="card panel-card" id="outCard" data-tab="world" role="tabpanel" hidden>
+    <h2>Outings <span class="new" data-since="0.7">NEW</span> <span class="jp">おでかけ</span></h2>
     <div class="away" id="awayNote" hidden></div>
     <p class="hint" id="outHint">Send your bird out for an hour or so in the daytime. Nothing needs doing while it's away, and it comes home with a souvenir and a postcard for Telegram 📮</p>
     <div class="places" id="places"></div>
   </section>
 
-  <section class="card panel-care" id="familyCard" hidden>
-    <h2>Family <span class="new">NEW</span> <span class="jp">かぞく</span></h2>
+  <section class="card panel-card" id="familyCard" data-tab="world" role="tabpanel" hidden>
+    <h2>Family <span class="new" data-since="0.7">NEW</span> <span class="jp">かぞく</span></h2>
     <p class="hint" id="familyHint"></p>
     <div class="album" id="album"></div>
     <button class="btn wide" id="partnerBtn" hidden>💞 Find a partner…</button>
     <p class="hint" id="partnerWarn" hidden></p>
   </section>
 
-  <section class="card panel-care" id="friendsCard">
-    <h2>Okame's friends <span class="new">NEW</span> <span class="jp">ともだち</span></h2>
+  <section class="card panel-card" id="friendsCard" data-tab="world" role="tabpanel">
+    <h2>Okame's friends <span class="new" data-since="0.5">NEW</span> <span class="jp">ともだち</span></h2>
     <p class="hint" id="friendsHint">Little birds drop by to visit now and then. Who will come next?</p>
     <div class="friends" id="friends"></div>
   </section>
 
-  <section class="card panel-care" id="wardCard">
+  <section class="card panel-card" id="wardCard" data-tab="world" role="tabpanel">
     <h2>Wardrobe &amp; gifts <span class="jp">おしゃれ</span></h2>
     <button class="btn dark wide" id="giftBtn">🎁 Open today's gift</button>
     <div class="grid" id="hats" style="margin-top:12px"></div>
     <p class="hint" id="hatHint">Care for your bird and play to unlock more.</p>
   </section>
 
-  <section class="card panel" id="tab-tune" hidden>
+  <section class="card panel" id="tab-tune" role="tabpanel" hidden>
     <h2>Teach a whistle <span class="jp">うた</span></h2>
     <p class="hint">Tap up to 8 notes. Birds learn by repetition: practise together once a day, three days in a row, and your bird will start whistling it by itself.</p>
     <div class="notes" id="noteButtons"></div>
@@ -453,16 +465,16 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
     <label class="row" style="margin-top:14px"><span>Chirps on this phone<br><small style="font-weight:600;opacity:.6">Turn the volume up a little to hear them</small></span><input type="checkbox" id="sound" checked style="flex:0 0 auto;width:22px;height:22px"></label>
   </section>
 
-  <section class="card panel" id="tab-photo" hidden>
+  <section class="card panel" id="tab-photo" role="tabpanel" hidden>
     <h2>Photo booth <span class="jp">しゃしん</span></h2>
     <p class="hint">A picture of your bird's screen, ready to keep.</p>
     <canvas id="photoPreview" width="640" height="420" hidden></canvas>
     <img id="photoOut" alt="Photo of your bird" style="width:100%;border-radius:12px;border:3px solid var(--ink);-webkit-touch-callout:default">
     <p class="hint">Press and hold the picture, then tap <b>Save to Photos</b>.</p>
-    <button class="btn wide" id="snap">↻ New picture</button>
+    <div class="row"><button class="btn" id="snap">↻ New picture</button><button class="btn dark" id="sharePhoto" hidden>Share…</button></div>
   </section>
 
-  <section class="card panel" id="tab-settings" hidden>
+  <section class="card panel" id="tab-settings" role="tabpanel" hidden>
     <h2>Settings <span class="jp">せってい</span></h2>
     <div id="locked">
       <p class="hint">Settings are protected. Tap <b>Show code</b> and a 4-digit code appears on Okame's screen for two minutes. Type it here.</p>
@@ -503,8 +515,10 @@ footer { text-align: center; font-size: 12px; opacity: .6; font-weight: 700; }
 <script>
 "use strict";
 const ICONS = /*ICONS*/{};
+const T = /*TABLES*/{};  // names, labels and prices shared with the firmware and the relay (assets/tables.json)
 const PAGE = /*PAGE*/"dev";  // the egg reports which page it serves; an old open page reloads itself
 const $ = (id) => document.getElementById(id);
+document.querySelectorAll(".jp").forEach((e) => { if (!e.lang) e.lang = "ja"; });
 const PAL = { bg: "#9eaa8a", ink: "#1e2418", ghost: "#929e7f", shadow: "#8a967a" };
 let state = null, frameHex = "", token = sessionStorage.getItem("okame-token") || "";
 let tune = [], tuneSeeded = false, teachArmed = 0;
@@ -554,23 +568,8 @@ function spriteCanvas(name, k) {
 }
 
 // ---------- species and friends ----------
-const SPECIES = {
-  cockatiel: { en: "Cockatiel", jp: "オカメインコ", sprite: "adult_idle", sub: "オカメ · POCKET COCKATIEL", voice: 1 },
-  budgie: { en: "Budgie", jp: "セキセイインコ", sprite: "budgie_adult_idle", sub: "セキセイ · POCKET BUDGIE", voice: 1.18 },
-  owl: { en: "Owl", jp: "フクロウ", sprite: "owl_adult_idle", sub: "フクロウ · POCKET OWL", voice: 0.3 },
-};
-const FRIENDS = [
-  { en: "Budgie", jp: "セキセイインコ", sprite: "fr_budgie", species: "budgie",
-    fact: "A chatty little parakeet. Budgies bob their heads to say hello.", hint: "Drops by in the daytime.", hintJp: "ひるまに あそびにくるよ" },
-  { en: "Belgian racing pigeon", jp: "ハト", sprite: "fr_pigeon",
-    fact: "Belgium is the home of pigeon racing. This one flies Matthieu's notes and hugs to you.", hint: "Comes with Matthieu's next note.", hintJp: "マチューの おてがみと いっしょに" },
-  { en: "Shima-enaga", jp: "シマエナガ", sprite: "fr_enaga",
-    fact: "The snow fairy of Hokkaido: a tiny white puff with a long tail.", hint: "Comes in winter, or when it snows.", hintJp: "ふゆや ゆきの ひに くるよ" },
-  { en: "Mejiro", jp: "メジロ", sprite: "fr_mejiro",
-    fact: "A green bird with white eye-rings that sips nectar from plum blossoms.", hint: "Comes in plum and sakura season.", hintJp: "うめと さくらの きせつに" },
-  { en: "Lucky owl", jp: "フクロウ", sprite: "fr_owl", species: "owl",
-    fact: "Fukurō can be written 不苦労, \"no hardship\", so owls bring luck.", hint: "Comes in the evening, and after a 大吉.", hintJp: "よるや 大吉の あとに" },
-];
+const SPECIES = Object.fromEntries(T.species.map((s) => [s.key, s]));
+const FRIENDS = T.friends;
 let friendsKey = "", pickedSpecies = null;
 function showFriends(f, species) {
   if (!f) return;
@@ -591,7 +590,7 @@ function showFriends(f, species) {
     const t = document.createElement("div");
     const n = f.visits[i] || 0;
     t.innerHTML = got
-      ? `<b>${fr.en}${seen & (1 << i) ? "" : ' <span class="new">NEW</span>'}</b><small class="jp">${fr.jp}</small><p>${fr.fact}</p><small>${n === 1 ? "visited once" : `visited ${n} times`}</small>`
+      ? `<b>${fr.en}${seen & (1 << i) ? "" :  ' <span class="new">NEW</span>'}</b><small class="jp">${fr.jp}</small><p>${fr.fact}</p><small>${n === 1 ? "visited once" : `visited ${n} times`}</small>`
       : family ? `<b>${fr.en}</b><small class="jp">${fr.jp}</small><p>Your bird's own family, so it doesn't come to visit.</p>`
       : `<b>???</b><small class="jp">${fr.hintJp}</small><p>${fr.hint}</p>`;
     d.append(t);
@@ -643,11 +642,13 @@ function silentWav() {
   return "data:audio/wav;base64," + btoa(String.fromCharCode(...new Uint8Array(b.buffer)));
 }
 // Called on every tap: iOS only starts or wakes audio inside a tap, and it suspends it again after a screen lock.
-function unlockAudio() {
-  if (!$("sound").checked) return;
+function playbackMode() {  // inside a tap that makes a sound: iOS then keeps the chirps audible on the silent switch
   if (navigator.audioSession) navigator.audioSession.type = "playback";
   if (!keepAlive) { keepAlive = new Audio(silentWav()); keepAlive.loop = true; keepAlive.volume = 0.01; }
   if (keepAlive.paused) keepAlive.play().catch(() => {});
+}
+function unlockAudio() {
+  if (!$("sound").checked) return;
   if (!audio) {
     try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
   }
@@ -661,6 +662,7 @@ function ac() {
   if (!$("sound").checked) return null;
   if (!audio) unlockAudio();
   if (!audio) return null;
+  playbackMode();
   if (audio.state !== "running") audio.resume().catch(() => {});
   return audio;
 }
@@ -686,10 +688,20 @@ function happyChirp() { chirp(2300, 0, 0.1); chirp(2800, 0.12, 0.12); }
 function playNotes(notes) { notes.forEach((n, i) => chirp(PITCH[n], i * 0.28, 0.24, 1.05)); }
 
 // ---------- API ----------
+let offlineSince = 0, offlineTimer = null;
 function setOnline(on, label) {
   $("online").firstChild.classList.toggle("on", on);
   $("online").lastChild.textContent = on ? (label || " live") : " offline";
+  if (on) {
+    offlineSince = 0;
+    clearTimeout(offlineTimer); offlineTimer = null;
+    $("offlineCard").hidden = true;
+  } else if (!offlineSince) {  // say so after ten seconds, not on the first hiccup
+    offlineSince = Date.now();
+    offlineTimer = setTimeout(() => { if (offlineSince) $("offlineCard").hidden = false; }, 10000);
+  }
 }
+$("retryBtn").onclick = () => { $("retryBtn").textContent = "Looking…"; refresh().finally(() => { $("retryBtn").textContent = "Try again"; }); connectEvents(); };
 async function api(path, body, quiet) {
   const opt = body ? { method: "POST", body: new URLSearchParams(body) } : {};
   opt.headers = token ? { "X-Okame-Token": token } : {};
@@ -706,7 +718,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(t._h);
-  t._h = setTimeout(() => t.classList.remove("show"), 2200);
+  t._h = setTimeout(() => t.classList.remove("show"), 1500 + 60 * String(msg).length);
 }
 
 // ---------- state ----------
@@ -821,7 +833,9 @@ function applyState(s) {
   state = s;
   if (s.frame) showFrame(s.frame);
   $("food").textContent = hearts(s.hunger);
+  $("food").setAttribute("aria-label", `food ${s.hunger} of 4`);
   $("joy").textContent = hearts(s.happy);
+  $("joy").setAttribute("aria-label", `joy ${s.happy} of 4`);
   $("title").textContent = s.name || (s.stage === "egg" ? "An egg" : "Your bird");
   const spName = (SPECIES[s.species] || SPECIES.cockatiel).en.toLowerCase();
   const stage = { egg: "egg", chick: "chick", juvenile: "juvenile", adult: s.variant + " " + spName, gone: "flew away" }[s.stage];
@@ -858,6 +872,7 @@ function applyState(s) {
   setOnline(true, s.setup ? " setup" : " live");
   document.title = (s.name || "Okame") + " · Okame";
   $("foot").textContent = `${s.host}.local · firmware ${s.fw}`;
+  showBadges(s.fw);
   [...$("level").children].forEach((b, i) => b.classList.toggle("on", i < s.tuneLevel));
   if (!tuneSeeded && s.tune) { tuneSeeded = true; tune = [...s.tune].map(Number); renderStaff(); }
   $("levelTxt").textContent = s.tune ? `${s.tuneLevel}/3 days` : "";
@@ -926,7 +941,7 @@ function showGame(g) {
   $("playHint").hidden = !!g;
   if (!g) return;
   if (frameHex) drawLcd($("lcdMini").getContext("2d"), frameHex);
-  if (starting && !$("tab-care").hidden) requestAnimationFrame(() => $("playCard").scrollIntoView({ behavior: "smooth", block: "end" }));
+  if (starting && currentTab === "play") requestAnimationFrame(() => $("playCard").scrollIntoView({ behavior: "smooth", block: "end" }));
   const score = g.type === "lr" ? `· Round ${Math.min(g.round + (g.phase === "ask" ? 1 : 0), g.rounds)}/${g.rounds} · ${"♥".repeat(g.hits) || "no ♥ yet"}` + (g.phase === "turn" ? ` · It went ${g.turn}! ${g.hit ? "You got it!" : "Missed!"}` : "")
     : g.type === "janken" ? `You ${g.wins} · Okame ${g.losses}` + (g.phase === "reveal" ? `  ${HAND_EMOJI[g.you]} vs ${HAND_EMOJI[g.bird]} ${g.result > 0 ? "You win!" : g.result < 0 ? "Okame wins!" : "Aiko! Again!"}` : "")
     : g.type === "dance" ? `${g.length} moves · best ${g.best}` + (g.phase === "listening" ? "  " + "●".repeat(g.entered) + "○".repeat(Math.max(0, g.length - g.entered)) : "")
@@ -954,7 +969,7 @@ async function startGame(g) {
   ac();
   const r = await api("/api/game-start", { g });
   if (!r.ok) return toast("Not now: it's asleep, busy or still an egg.");
-  pollGame();
+  if (!es || es.readyState !== 1) pollGame();  // the dongle pushes game states over the live connection; poll only without one
 }
 let gamePoll = null, gamePollFails = 0;
 function pollGame() {
@@ -993,8 +1008,16 @@ const OMIKUJI = [
   ["末吉", "Future blessing", "すえきち", ["Luck is slowly growing, like a seed. Keep watering it!", "The best part of this week is still coming.", "Small steps today, big steps later."]],
   ["凶", "Bad luck", "きょう", ["At a shrine you'd tie a bad fortune to a branch and leave it behind. Okame just did! 🎋", "Tomorrow's fortune is already better. Okame says: don't worry.", "Even rainy days end. Time for a hug 🤗"]],
 ];
+const renderKeys = {};
+function unchanged(name, slice) {  // true when this card already shows exactly this data
+  const key = JSON.stringify(slice);
+  if (renderKeys[name] === key) return true;
+  renderKeys[name] = key;
+  return false;
+}
 function showOmikuji(o) {
   if (!o) return;
+  if (unchanged("omikuji", o)) return;
   const g = o.today;
   $("omiBtn").hidden = g >= 0;
   $("omiHint").hidden = g >= 0;
@@ -1068,6 +1091,7 @@ $("alarmOn").addEventListener("input", () => { alarmDirty = true; });
 let fussWas = false;
 function showLife(s) {
   const l = s.life;
+  if (unchanged("life", [l, s.stage, s.name, s.ageDays])) return;
   const alive = s.stage !== "egg" && s.stage !== "gone";
   $("trainCard").hidden = !l || !alive;
   $("clockCard").hidden = !l;
@@ -1144,13 +1168,10 @@ $("alarmSave").onclick = async () => {
 };
 
 // ---------- Okame's world: the bird shop, the cage, outings and the family ----------
-const TOYS = [["toy_swing", "Swing", "ブランコ"], ["toy_bell", "Bell", "すず"], ["toy_mirror", "Mirror", "かがみ"],
-              ["toy_ladder", "Ladder", "はしご"], ["toy_perch", "Perch", "とまりぎ"]];
-const TOY_PRICE = [30, 20, 25, 30, 20], HAT_PRICE = 40, TREAT_PRICE = 5;
-const PLACES = [["pl_tree", "Park", "こうえん", 0], ["pl_cup", "Café", "カフェ", 0], ["umbrella", "Beach", "うみ", 7],
-                ["pl_torii", "Shrine", "じんじゃ", 7], ["pl_mill_body", "Windmill", "ふうしゃ", 14],
-                ["pl_frites", "Frietkot", "フリッツ", 14]];
-const PLACE_PHRASE = ["at the park 🌳", "at the café ☕", "at the beach 🏖️", "at the shrine ⛩️", "at the windmill 🌷", "at the frietkot 🍟"];
+const TOYS = T.toys.map((x) => [x.sprite, x.en, x.jp]);
+const TOY_PRICE = T.toys.map((x) => x.price), HAT_PRICE = T.prices.hat, TREAT_PRICE = T.prices.treat;
+const PLACES = T.places.map((x) => [x.sprite, x.en, x.jp, x.minDays]);
+const PLACE_PHRASE = T.places.map((x) => `${x.at} ${x.emoji}`);
 function shopButton(icon, title, sub, onclick) {
   const b = document.createElement("button");
   b.className = "btn";
@@ -1171,6 +1192,7 @@ async function buy(item, n, what) {
 let partnerArmed = 0;
 function showWorld(s) {
   const h = s.home, alive = s.stage !== "egg" && s.stage !== "gone";
+  if (unchanged("world", [h, s.stage, s.name, s.ageDays, s.unlocked])) return;
   $("seedChip").hidden = !h;
   ["shopCard", "outCard", "familyCard"].forEach((id) => $(id).hidden = !h);
   if (!h) return;
@@ -1224,7 +1246,10 @@ function showWorld(s) {
     d.className = "friend";
     d.append(spriteCanvas((SPECIES[m.species] || SPECIES.cockatiel).sprite, 4));
     const t = document.createElement("div");
-    t.innerHTML = `<b>${m.name.replace(/[<>&]/g, "")}${m.golden ? " ✨" : ""}</b><small>Generation ${m.gen + 1} · ${m.variant} ${(SPECIES[m.species] || SPECIES.cockatiel).en.toLowerCase()} · ${m.days} days</small><p>Lives in the family nest now, and drops by to visit.</p>`;
+    const b = document.createElement("b"); b.textContent = `${m.name}${m.golden ? " ✨" : ""}`;
+    const sm = document.createElement("small"); sm.textContent = `Generation ${m.gen + 1} · ${m.variant} ${(SPECIES[m.species] || SPECIES.cockatiel).en.toLowerCase()} · ${m.days} days`;
+    const pp = document.createElement("p"); pp.textContent = "Lives in the family nest now, and drops by to visit.";
+    t.append(b, sm, pp);
     d.append(t);
     return d;
   }));
@@ -1251,7 +1276,7 @@ $("partnerBtn").onclick = async () => {
   $("partnerBtn").textContent = "💞 Find a partner…";
   $("partnerWarn").hidden = true;
   const r = await api("/api/partner", {});
-  if (r.status === 401) { toast("Unlock Settings first (the code on Okame's screen), then try again."); document.querySelector('[data-tab="settings"]').click(); return; }
+  if (r.status === 401) { toast("Unlock Settings first (the code on Okame's screen), then try again."); showTab("settings"); return; }
   if (!r.ok) return toast("Not now: try when Okame is awake, at home and not busy.");
   [0, 0.15, 0.3].forEach((t) => chirp(2400, t, 0.12));
   toast("💞 Look at the screen! An egg comes tomorrow morning.");
@@ -1259,9 +1284,8 @@ $("partnerBtn").onclick = async () => {
 };
 
 // ---------- wardrobe & gifts ----------
-const HATS = [["none", "None", null], ["bow", "Bow tie", "hat_bow"], ["crown", "Sunglasses", "hat_crown"], ["beret", "Scarf", "hat_beret"],
-              ["party", "Heart medal", "hat_party"], ["sakura", "Sakura flower", "hat_sakura"]];
-const HOW = { bow: "first scritch", crown: "win 3 games", beret: "20 care actions", party: "15 seeds in Seed Rain", sakura: "teach it a song" };
+const HATS = T.hats.slice(0, T.giftable).map((h) => [h.key, h.en, h.sprite]);  // the shop and the wardrobe
+const HOW = Object.fromEntries(T.hats.map((h) => [h.key, h.how]));
 HATS.forEach(([key, label, icon], i) => {
   const b = document.createElement("button");
   b.className = "act hat";
@@ -1276,6 +1300,7 @@ HATS.forEach(([key, label, icon], i) => {
   $("hats").append(b);
 });
 function showWardrobe(s) {
+  if (unchanged("wardrobe", [s.unlocked, s.hat, s.giftReady, s.bestRain, s.rivalRain])) return;
   [...$("hats").children].forEach((b) => {
     const i = +b.dataset.i;
     b.classList.toggle("got", i === 0 || !!(s.unlocked & (1 << i)));
@@ -1369,6 +1394,14 @@ function drawPhoto(force) {
   $("photoOut").src = photo.canvas.toDataURL("image/png");
 }
 $("snap").onclick = () => drawPhoto(true);
+if (navigator.canShare) $("sharePhoto").hidden = false;
+$("sharePhoto").onclick = () => {
+  photo.canvas.toBlob((blob) => {
+    const file = new File([blob], `${(state && state.name) || "okame"}.png`, { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).catch(() => {});
+    else toast("Press and hold the picture to save it.");
+  });
+};
 
 // ---------- settings ----------
 function setLocked(locked) {
@@ -1472,13 +1505,35 @@ $("newEgg").onclick = async () => {
 };
 
 // ---------- tabs ----------
-document.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
-  document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", x === t));
-  document.querySelectorAll(".panel").forEach((p) => p.hidden = p.id !== "tab-" + t.dataset.tab);
-  document.querySelectorAll(".panel-care").forEach((c) => c.style.display = t.dataset.tab === "care" ? "" : "none");
-  if (t.dataset.tab === "settings") loadSettings();
-  if (t.dataset.tab === "photo") drawPhoto(true);
-});
+// NEW badges: each is tagged with the release that added the feature, and disappears once this phone has used
+// the page on a later firmware for a while.
+function fwTuple(s) { return (String(s || "0").split("-")[0].match(/\d+/g) || [0]).map(Number); }
+function newerThan(a, b) { const x = fwTuple(a), y = fwTuple(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; }
+let badgesDone = false;
+function showBadges(fw) {
+  if (badgesDone) return;
+  badgesDone = true;
+  let seen = "0";
+  try { seen = localStorage.getItem("okame-seen-fw") || "0"; } catch (e) {}
+  document.querySelectorAll(".new[data-since]").forEach((b) => { if (!newerThan(b.dataset.since, seen)) b.hidden = true; });
+  setTimeout(() => { try { localStorage.setItem("okame-seen-fw", fw); } catch (e) {} }, 60000);  // a minute on this version counts as seen
+}
+let currentTab = "care";
+function showTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", x.dataset.tab === tab));
+  document.querySelectorAll(".panel").forEach((p) => p.hidden = p.id !== "tab-" + tab);
+  document.querySelectorAll(".panel-card").forEach((c) => c.style.display = c.dataset.tab === tab ? "" : "none");
+  try { localStorage.setItem("okame-tab", tab); } catch (e) {}
+  if (tab === "settings") loadSettings();
+  if (tab === "photo") drawPhoto(true);
+}
+document.querySelectorAll(".tab").forEach((t) => t.onclick = () => showTab(t.dataset.tab));
+{
+  let first = new URLSearchParams(location.search).get("tab");
+  try { first = first || localStorage.getItem("okame-tab"); } catch (e) {}
+  showTab(first && document.querySelector(`.tab[data-tab="${first}"]`) ? first : "care");
+}
 
 // ---------- live updates ----------
 let es = null;
@@ -1490,6 +1545,7 @@ function connectEvents() {
   es.addEventListener("frame", (e) => showFrame(e.data));
   es.addEventListener("state", (e) => applyState(JSON.parse(e.data)));
   es.addEventListener("tune", (e) => playNotes([...e.data].map(Number)));
+  es.addEventListener("game", (e) => { const g = JSON.parse(e.data); if (frameHex && g) drawLcd($("lcdMini").getContext("2d"), frameHex); showGame(g); });
   es.onerror = () => setOnline(false);
 }
 document.addEventListener("visibilitychange", () => {
@@ -1498,7 +1554,7 @@ document.addEventListener("visibilitychange", () => {
 ["touchend", "click"].forEach((ev) => document.addEventListener(ev, unlockAudio, true));
 document.addEventListener("visibilitychange", () => { if (document.hidden && keepAlive) keepAlive.pause(); });
 $("sound").addEventListener("change", () => { if (!$("sound").checked && keepAlive) keepAlive.pause(); });
-refresh().then(() => { if (state && state.setup) document.querySelector('[data-tab="settings"]').click(); });
+refresh().then(() => { if (state && state.setup) showTab("settings"); });
 connectEvents();
 </script>
 </body>

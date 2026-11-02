@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "tables.h"
 
 // Okame's care rules. Pure logic: time comes in as epoch seconds, the local hour via a callback.
 
@@ -58,7 +59,8 @@ struct PetState {
 enum Accessory : uint8_t {
   HAT_NONE, HAT_BOW, HAT_CROWN, HAT_BERET, HAT_PARTY, HAT_SAKURA, HAT_OMAMORI, HAT_HACHIMAKI, HAT_COUNT
 };
-constexpr uint8_t HAT_GIFTABLE = HAT_SAKURA + 1;
+constexpr uint8_t HAT_GIFTABLE = tables::HAT_GIFTABLE;
+static_assert(HAT_GIFTABLE == HAT_SAKURA + 1 && sizeof tables::HATS / sizeof *tables::HATS == HAT_COUNT, "tables.json: hats");
 
 // A calendar date. Days are counted with civil(), so countdowns and "once a day" follow the local calendar.
 struct Date {
@@ -106,7 +108,7 @@ struct PetBirds {
 // Tricks a trained bird can do, one per training level.
 enum Trick : uint8_t { TRICK_WAVE, TRICK_SPIN, TRICK_BOW, TRICK_HANG, TRICK_COUNT };
 // Age milestones (days) that get a party.
-constexpr uint16_t PARTY_DAYS[] = {7, 10, 30, 50, 100, 200, 365};
+inline constexpr const uint16_t (&PARTY_DAYS)[7] = tables::PARTY_DAYS;
 
 // Everything added in 0.6: training, old age, the golden form, the clock and the alarm. Its own key ("pet4"), so
 // 0.5 still finds "pet", "pet2" and "pet3" exactly as it left them after a rollback. Later releases append fields
@@ -139,9 +141,14 @@ struct PetLife {
 // seeds (points) and what they bought, souvenirs, and the family album. Own key ("pet5").
 enum Toy : uint8_t { TOY_SWING, TOY_BELL, TOY_MIRROR, TOY_LADDER, TOY_PERCH, TOY_COUNT };
 enum Place : uint8_t { PLACE_PARK, PLACE_CAFE, PLACE_BEACH, PLACE_SHRINE, PLACE_WINDMILL, PLACE_FRITES, PLACE_COUNT };
-constexpr uint16_t TOY_PRICE[TOY_COUNT] = {30, 20, 25, 30, 20};
-constexpr uint16_t HAT_PRICE = 40, TREAT_PRICE = 5;
-constexpr uint8_t PLACE_MIN_DAYS[PLACE_COUNT] = {0, 0, 7, 7, 14, 14};
+// Prices and the age a place opens come from assets/tables.json (shared with the page and the relay).
+inline constexpr const uint16_t (&TOY_PRICE)[TOY_COUNT] = tables::TOY_PRICE;
+constexpr uint16_t HAT_PRICE = tables::HAT_PRICE, TREAT_PRICE = tables::TREAT_PRICE;
+inline constexpr const uint8_t (&PLACE_MIN_DAYS)[PLACE_COUNT] = tables::PLACE_MIN_DAYS;
+static_assert(sizeof tables::TOYS / sizeof *tables::TOYS == TOY_COUNT, "tables.json: toys");
+static_assert(sizeof tables::PLACES / sizeof *tables::PLACES == PLACE_COUNT, "tables.json: places");
+static_assert(sizeof tables::FRIENDS / sizeof *tables::FRIENDS == FRIEND_COUNT, "tables.json: friends");
+static_assert(sizeof tables::SPECIES / sizeof *tables::SPECIES == uint8_t(Species::Count), "tables.json: species");
 constexpr int FAMILY_MAX = 6;
 struct PetHome {
   uint16_t version;

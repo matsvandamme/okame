@@ -23,9 +23,21 @@ icons.update({name: rows for name, rows in parse(ROOT / "assets" / "sprites" / "
 icons.update({name: rows for name, rows in parse(ROOT / "assets" / "sprites" / "extras.txt") if name == "umbrella"})
 html = (ROOT / "web" / "index.html").read_text()
 html = html.replace("/*ICONS*/{}", json.dumps(icons, separators=(",", ":")))
+tables = json.loads((ROOT / "assets" / "tables.json").read_text())
+tables.pop("_comment", None)
+html = html.replace("/*TABLES*/{}", json.dumps(tables, ensure_ascii=False, separators=(",", ":")))
 import hashlib
 page_hash = hashlib.sha256(html.encode()).hexdigest()[:12]
 html = html.replace("/*PAGE*/\"dev\"", json.dumps(page_hash))
+# The Content-Security-Policy names the final inline script by hash: nothing else can ever run on the page.
+import base64, re as _re
+scripts = _re.findall(r"<script>(.*?)</script>", html, _re.S)
+assert len(scripts) == 1, "the page has one inline script"
+script_hash = base64.b64encode(hashlib.sha256(scripts[0].encode()).digest()).decode()
+CSP = (f"default-src 'self'; script-src 'sha256-{script_hash}'; style-src 'self' 'unsafe-inline'; "
+       "img-src 'self' data: blob:; media-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+(ROOT / "out" / "web").mkdir(parents=True, exist_ok=True)
+(ROOT / "out" / "web" / "csp.txt").write_text(CSP)
 
 built = ROOT / "out" / "web" / "index.html"
 built.parent.mkdir(parents=True, exist_ok=True)
@@ -40,5 +52,6 @@ icon = ",".join(f"0x{b:02x}" for b in (ROOT / "web" / "apple-touch-icon.png").re
     f"static const uint8_t WEB_INDEX_GZ[] = {{{body}}};\n"
     f"static const uint8_t WEB_ICON_PNG[] = {{{icon}}};\n"
     f'#define WEB_PAGE_HASH "{page_hash}"\n'
+    f'#define WEB_CSP "{CSP}"\n'
 )
 print(f"web: {len(html)} bytes -> {len(data)} gzipped")

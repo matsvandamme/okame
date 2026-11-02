@@ -230,8 +230,7 @@ void apply(JsonDocument& cmd, const String& raw) {
     Result r = app::pet.act(act, app::epoch());
     app::ui.remoteAction(act, r, now);
     if (r == Result::Ok) app::requestSave();
-    const char* names[] = {"ok", "refused", "not-needed", "sleeping", "away"};
-    ack(id, int(r) < 5 ? names[int(r)] : "refused");
+    ack(id, int(r) >= 0 && size_t(r) < sizeof tables::RESULTS / sizeof *tables::RESULTS ? tables::RESULTS[int(r)] : "refused");
   } else if (type == "tune") {
     String t = cmd["notes"] | "";
     uint8_t notes[rules::TUNE_MAX];

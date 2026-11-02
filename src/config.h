@@ -24,3 +24,4 @@ constexpr uint32_t OTA_CHECK_EVERY_S = 24 * 3600;
 constexpr uint32_t OTA_FIRST_CHECK_MS = 3 * 60 * 1000;
 constexpr uint32_t MARK_VALID_AFTER_MS = 60 * 1000;
 constexpr int MAX_NETWORKS = 5;
+constexpr uint32_t CLOCK_SANE_EPOCH = 1700000000;  // Nov 2023: any clock reading below this is a placeholder, not real time

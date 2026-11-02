@@ -15,42 +15,15 @@ AsyncWebServer server(80);
 AsyncEventSource events("/api/events");
 char lastFrame[201] = "";
 uint32_t nextFrame = 0, nextState = 0;
+String lastGame;
 
-const char* stageName(Stage s) {
-  switch (s) {
-    case Stage::Egg: return "egg";
-    case Stage::Chick: return "chick";
-    case Stage::Juvenile: return "juvenile";
-    case Stage::Adult: return "adult";
-    default: return "gone";
-  }
-}
-const char* variantName(Variant v) {
-  switch (v) {
-    case Variant::Pearl: return "pearl";
-    case Variant::Pied: return "pied";
-    case Variant::Scruffy: return "scruffy";
-    default: return "grey";
-  }
-}
-const char* moodName(Mood m) {
-  switch (m) {
-    case Mood::Content: return "content";
-    case Mood::Meh: return "meh";
-    case Mood::Sad: return "sad";
-    case Mood::Sick: return "sick";
-    default: return "asleep";
-  }
-}
-const char* resultName(Result r) {
-  switch (r) {
-    case Result::Ok: return "ok";
-    case Result::Refused: return "refused";
-    case Result::NotNeeded: return "not-needed";
-    case Result::Away: return "away";
-    default: return "sleeping";
-  }
-}
+// Names on the wire come from assets/tables.json (tables.h), the same ones the page and the relay use.
+template <size_t N>
+const char* nameOf(const char* const (&names)[N], int i) { return i >= 0 && size_t(i) < N ? names[i] : names[0]; }
+const char* stageName(Stage s) { return nameOf(tables::STAGES, int(s)); }
+const char* variantName(Variant v) { return nameOf(tables::VARIANTS, int(v)); }
+const char* moodName(Mood m) { return nameOf(tables::MOODS, int(m)); }
+const char* resultName(Result r) { return nameOf(tables::RESULTS, int(r)); }
 
 String jsonString(const char* s) {
   String o = "\"";
@@ -137,9 +110,8 @@ String web::stateJson() {
   j += ",\"stage\":\"" + String(stageName(s.stage)) + "\"";
   j += ",\"variant\":\"" + String(variantName(s.variant)) + "\"";
   {
-    static const char* const SPECIES[] = {"cockatiel", "budgie", "owl"};
     const PetBirds& b = app::pet.birds();
-    j += ",\"species\":\"" + String(SPECIES[uint8_t(app::pet.species())]) + "\"";
+    j += ",\"species\":\"" + String(tables::SPECIES[uint8_t(app::pet.species())]) + "\"";
     j += ",\"friends\":{\"met\":" + String(b.met) + ",\"visits\":[";
     for (int i = 0; i < FRIEND_COUNT; i++) j += String(i ? "," : "") + b.visits[i];
     j += "]}";
@@ -164,10 +136,8 @@ String web::stateJson() {
   j += ",\"homeDays\":" + String(app::ui.daysToHome(app::today()));
   j += ",\"wx\":" + cloud::weatherJson();
   {
-    static const char* const OCC[] = {"", "hina", "sakura", "kodomo", "tanabata", "halloween", "sinterklaas",
-                                      "christmas", "newyear", "birthday", "anniversary", "home", "yearend"};
     Date d = app::today();
-    j += ",\"occasion\":\"" + String(OCC[int(occasion(d, app::pet.extra()))]) + "\"";
+    j += ",\"occasion\":\"" + String(nameOf(tables::OCCASIONS, int(occasion(d, app::pet.extra())))) + "\"";
   }
   j += ",\"words\":" + String(app::pet.wordCount()) + ",\"wordList\":[";
   {
@@ -195,7 +165,6 @@ String web::stateJson() {
   j += ",\"giftReady\":" + String(app::pet.giftReady(now) ? "true" : "false");
   j += ",\"bestRain\":" + String(s.bestRain);
   {
-    static const char* const SPECIES[] = {"cockatiel", "budgie", "owl"};
     const PetHome& h = app::pet.home();
     const PetLife::Outing& o = app::pet.life().outing;
     j += ",\"home\":{\"points\":" + String(h.points) + ",\"toys\":" + String(h.toys) + ",\"toy\":" + String(h.toy) +
@@ -209,7 +178,7 @@ String web::stateJson() {
     for (int i = 0; i < h.familyCount; i++) {
       const PetHome::Member& m = h.family[i];
       j += String(i ? "," : "") + "{\"name\":" + jsonString(m.name) + ",\"species\":\"" +
-           SPECIES[m.species < 3 ? m.species : 0] + "\",\"variant\":\"" + variantName(Variant(m.variant)) +
+           nameOf(tables::SPECIES, m.species) + "\",\"variant\":\"" + variantName(Variant(m.variant)) +
            "\",\"golden\":" + (m.golden ? "true" : "false") + ",\"gen\":" + String(m.generation) +
            ",\"days\":" + String(m.days) + "}";
     }
@@ -594,8 +563,7 @@ void sendIndex(AsyncWebServerRequest* r) {
   AsyncWebServerResponse* res = r->beginResponse(200, "text/html", WEB_INDEX_GZ, sizeof WEB_INDEX_GZ);
   res->addHeader("Content-Encoding", "gzip");
   res->addHeader("Cache-Control", "no-cache");
-  res->addHeader("Content-Security-Policy",
-                 "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data:");
+  res->addHeader("Content-Security-Policy", WEB_CSP);  // the script's hash, computed by tools/embed_web.py
   r->send(res);
 }
 
@@ -662,7 +630,9 @@ void begin() {
       if (app::pet.state().stage != Stage::Gone && !authorized(r)) return denied(r);
       // Which bird hatches: picked on the page; left out, the next egg is the same kind as before.
       String sp = param(r, "species");
-      int k = sp == "cockatiel" ? 0 : sp == "budgie" ? 1 : sp == "owl" ? 2 : -1;
+      int k = -1;
+      for (int i = 0; i < int(Species::Count); i++)
+        if (sp == tables::SPECIES[i]) k = i;
       app::pet.reset(app::epoch());
       if (k >= 0) app::pet.setSpecies(Species(k));
     }
@@ -696,6 +666,15 @@ void loop() {
   if (strcmp(frame, lastFrame)) {
     strcpy(lastFrame, frame);
     events.send(frame, "frame");
+  }
+  String game;
+  {
+    app::Lock lock;
+    game = gameJson();
+  }
+  if (game != lastGame) {  // the page follows a game without polling four times a second
+    lastGame = game;
+    events.send(game.c_str(), "game");
   }
   if (app::takeTuneEvent()) {
     String notes;

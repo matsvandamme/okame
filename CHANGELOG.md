@@ -3,6 +3,24 @@
 Each heading is a firmware release (the OTA version number in brackets). `tools/release.py` uses the matching
 section as the GitHub release notes. The relay is deployed separately and keeps working with older firmware.
 
+## 0.8.0 (10)
+
+A tidier page, and a tidier codebase.
+
+- The page has six tabs: Care, Play, World (shop, outings, family, friends, wardrobe), Tune, Photo and Settings
+  (the clock and alarm live there now). It remembers the tab you were on.
+- When the dongle stops answering, the page says so after ten seconds and offers "Try again" instead of showing
+  stale hearts.
+- NEW badges disappear by themselves once you've used a newer version for a while.
+- Toasts stay as long as they take to read; buttons and chips are easier to tap; Japanese labels are marked as
+  Japanese for screen readers; a Share button for photos on phones that have one.
+- Tapping the page no longer pauses your music: only the chirps switch the phone to playback.
+- The page redraws a card only when its data changed, and follows games over the live connection instead of
+  polling four times a second. Out-of-order updates are ignored.
+- The page's script is named by hash in the security policy: nothing else can ever run on it.
+- Developers: one `assets/tables.json` for every shared name, label and price (firmware, page, relay);
+  `ui.cpp` split into themed files, pixel-identical; the clock-sanity epoch named once.
+
 ## 0.7.1 (9)
 
 Reliability, nothing new to play with.

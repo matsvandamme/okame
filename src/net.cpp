@@ -202,7 +202,7 @@ bool online() { return staUp; }
 bool apActive() { return ap; }
 const char* apSsid() { return ssidAp; }
 const char* apPass() { return passAp; }
-bool timeValid() { return time(nullptr) > 1700000000; }
+bool timeValid() { return time(nullptr) > CLOCK_SANE_EPOCH; }
 String hostname() {
   NL l;
   return host;

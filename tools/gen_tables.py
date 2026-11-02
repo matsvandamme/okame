@@ -9,6 +9,7 @@ rewrites the generated block in relay/okame_relay.py, and gives tools/embed_web.
 """
 import json
 import pathlib
+import pprint
 import re
 import sys
 
@@ -57,7 +58,7 @@ def header(t):
 
 def relay_block(t):
     keep = {k: t[k] for k in ("species", "friends", "places", "toys", "hats", "prices", "omikuji", "partyDays")}
-    return f"{MARK_START}\nTABLES = {json.dumps(keep, ensure_ascii=False, indent=4)}\n{MARK_END}\n"
+    return f"{MARK_START}\nTABLES = {pprint.pformat(keep, width=110, sort_dicts=False)}\n{MARK_END}\n"
 
 
 def relay_text(t):

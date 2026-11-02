@@ -209,8 +209,8 @@ void setup() {
   tzset();
   storage::begin();
   bootEpoch = storage::lastEpoch();
-  bootReal = bootEpoch >= 1700000000;
-  if (!bootReal) bootEpoch = 1700000000;
+  bootReal = bootEpoch >= CLOCK_SANE_EPOCH;
+  if (!bootReal) bootEpoch = CLOCK_SANE_EPOCH;
   PetState st;
   if (storage::loadPet(st) && app::pet.load(st)) {
     // the bird is back
@@ -243,7 +243,7 @@ void loop() {
     uint32_t ep = app::epoch();
     if (!bootReal && net::timeValid()) {
       bootReal = true;
-      if (app::pet.state().eggStart < 1700000000) app::pet.reset(ep);  // first real time: the egg starts now
+      if (app::pet.state().eggStart < CLOCK_SANE_EPOCH) app::pet.reset(ep);  // first real time: the egg starts now
     }
     // Away from Wi-Fi the bird naps: time stands still, and on return at most 12 h is caught up (Pet::tick).
     if (clockTrusted() && net::online() && now - lastTick >= 1000) {
