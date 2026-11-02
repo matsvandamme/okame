@@ -37,6 +37,7 @@ String pendingMsg;           // ... and the command itself, to replay it if some
 int seen[32];                // recent command ids, so a resent command is not applied twice
 int seenAt = 0;
 int lastApplied = 0;         // the highest command id ever applied, saved: a reboot can't make us feed twice
+uint32_t relayNow = 0;       // the relay's clock at the last poll, to drop a pairing code that is too old to matter
 volatile uint32_t lastOk = 0, attempts = 0;
 char lastErr[64] = "none";
 String lastMsg = "null";
@@ -126,6 +127,12 @@ bool poll() {
         Locked l;
         acks.erase(acks.begin(), acks.begin() + sentAcks);
         events.erase(events.begin(), events.begin() + min(sentEvents, events.size()));  // the cap may have dropped some
+        relayNow = doc["now"] | 0;
+        int maxId = doc["maxid"] | -1;  // the relay's database was restored from a backup: ids start lower again
+        if (maxId >= 0 && maxId < lastApplied) {
+          lastApplied = 0;
+          prefs.putInt("lastcmd", 0);
+        }
         for (JsonObject cmd : doc["commands"].as<JsonArray>()) {
           String s;
           serializeJson(cmd, s);
@@ -174,13 +181,19 @@ bool unhex(const char* hex, uint8_t* out, size_t n) {
   return true;
 }
 
-bool seenBefore(int id) {
-  if (id <= lastApplied) return true;  // ids only ever grow; anything at or below the saved mark was handled
+// Things that show on the screen (notes, hugs, pictures, pairing codes) wait in `shows` until the screen is free and
+// are only acked once shown, so after a reboot the relay rightly resends them. Everything else is applied at once
+// and the highest applied id is saved, so a reboot can't make the bird eat twice.
+bool showsOnScreen(const String& type) { return type == "msg" || type == "pic" || type == "hug" || type == "pair"; }
+
+bool seenBefore(int id, const String& type) {
+  if (!showsOnScreen(type) && id <= lastApplied) return true;  // ids only ever grow
   for (int v : seen)
     if (v == id) return true;
-  seen[seenAt++ % 32] = id;
   return false;
 }
+
+void markSeen(int id) { seen[seenAt++ % 32] = id; }
 
 void markApplied(int id) {
   if (id > lastApplied) {
@@ -189,14 +202,19 @@ void markApplied(int id) {
   }
 }
 
+
 void apply(JsonDocument& cmd, const String& raw) {
   int id = cmd["id"] | 0;
   String type = cmd["type"] | "";
   uint32_t now = millis();
-  if (type == "msg" || type == "pic" || type == "hug" || type == "pair") {  // one thing on the screen at a time
-    if (shows.size() < 8) shows.push_back(raw);  // in order; the relay resends anything we had to leave out
+  if (showsOnScreen(type)) {  // one thing on the screen at a time, in order
+    if (shows.size() < 8) {
+      shows.push_back(raw);
+      markSeen(id);
+    }  // else: not seen, not acked: the relay offers it again in five minutes
     return;
   }
+  markSeen(id);
   markApplied(id);
   app::Lock lock;
   if (type == "act") {
@@ -306,6 +324,8 @@ void show(const String& raw) {
     pendingMsgAck = id;
     pendingMsg = raw;
   } else if (String(cmd["type"] | "") == "pair") {  // a Telegram pairing code, once the screen is free for it
+    uint32_t created = cmd["created"] | 0u;
+    if (created && relayNow && relayNow > created + 12 * 60) return ack(id, "expired");  // the relay drops it at 15
     String code = cmd["code"] | "0";
     app::ui.showCode(code.toInt(), "TELEGRAM", now, 3 * 60 * 1000);
     ack(id, "shown");
@@ -365,7 +385,8 @@ void loop() {
     JsonDocument cmd;
     if (deserializeJson(cmd, s)) continue;
     int id = cmd["id"] | 0;
-    if (seenBefore(id)) ack(id, "ok");  // already done before a reboot: tell the relay so it stops resending
+    String type = cmd["type"] | "";
+    if (seenBefore(id, type)) ack(id, "ok");  // already done before a reboot: tell the relay so it stops resending
     else apply(cmd, s);
   }
   if (otaAck >= 0 && !ota::busy() && !ota::rebootDue()) {  // an installed update reboots instead; the relay sees the new fw

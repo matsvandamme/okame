@@ -53,6 +53,7 @@ bool bootReal = false;   // bootEpoch came from a real clock (saved earlier), no
 bool clockTrusted() { return bootReal || net::timeValid(); }
 volatile bool saveWanted = false;
 uint32_t lastSave = 0, lastTick = 0, nextWhistle = 0;
+bool petUnreadable = false;  // a saved bird we could not read: never write the fresh egg over it
 bool pushFrame = false;
 uint8_t lastBacklight = 0;
 
@@ -70,7 +71,7 @@ void backlight(uint8_t level) { ledcWrite(PIN_LCD_BL, level); }
 void save() {
   app::Lock lock;
   storage::saveHome(app::pet.home());  // first: a power cut mid-save must never leave a partner waiting for a new egg
-  storage::savePet(app::pet.state());
+  if (!petUnreadable) storage::savePet(app::pet.state());
   storage::saveExtra(app::pet.extra());
   storage::saveBirds(app::pet.birds());
   storage::saveLife(app::pet.life());
@@ -215,6 +216,8 @@ void setup() {
     // the bird is back
   } else if (!storage::hasPet() && bootReal) {
     app::pet.reset(app::epoch());  // a brand-new dongle: the egg starts now
+  } else if (storage::hasPet()) {
+    petUnreadable = true;  // keep the record for a firmware that can read it; this one shows an egg it never saves
   }
   // else: keep the constructor's egg; it starts its clock once real time is known. A saved bird that somehow
   // can't be read is never a reason to start over.
@@ -318,7 +321,14 @@ void loop() {
   // A new image is confirmed only once it has run a minute AND the network path works (Wi-Fi up, clock from SNTP):
   // an update that broke Wi-Fi would otherwise confirm itself by just staying up, and could never update again.
   // Until then a reset rolls back to the previous image.
-  if (now > MARK_VALID_AFTER_MS && net::online() && net::timeValid()) ota::healthy();
+  if (now > MARK_VALID_AFTER_MS && net::online() && (net::timeValid() || cloud::connected())) ota::healthy();
+  // Still unconfirmed after six hours: the network never worked on this image. Roll back on purpose instead of
+  // sitting in limbo (the bootloader returns to the previous image on this reset).
+  if (now > 6 * 3600 * 1000u && !ota::confirmed()) {
+    save();
+    delay(200);
+    esp_restart();
+  }
   if (ota::rebootDue()) {
     save();
     delay(200);

@@ -864,6 +864,7 @@ function applyState(s) {
   syncTeach();
 }
 async function refresh() {
+  lastSeq = 0;  // a fresh fetch is the newest truth, even after the dongle rebooted and restarted its counter
   const s = await api("/api/state", null, true);
   if (s.ok && s.stage) applyState(s); else setOnline(false);
 }
@@ -1485,7 +1486,7 @@ function connectEvents() {
   if (!window.EventSource) return setInterval(refresh, 1500);
   if (es) es.close();
   es = new EventSource("/api/events");
-  es.onopen = refresh;
+  es.onopen = () => { lastSeq = 0; refresh(); };
   es.addEventListener("frame", (e) => showFrame(e.data));
   es.addEventListener("state", (e) => applyState(JSON.parse(e.data)));
   es.addEventListener("tune", (e) => playNotes([...e.data].map(Number)));

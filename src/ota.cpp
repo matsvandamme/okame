@@ -170,6 +170,8 @@ void healthy() {
   setStatus("new version confirmed");
 }
 
+bool confirmed() { return markedValid; }
+
 void checkNow() {
   wanted = true;
   retryAtMs = 0;

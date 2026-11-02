@@ -724,7 +724,7 @@ def pending():
                    (now, kind, now - ttl))
     rows = db.execute("select * from queue where done is null and (delivered is null or delivered < ?) "
                       "order by id limit 8", (now - 300,)).fetchall()
-    return [{"id": r["id"], "type": r["kind"], **json.loads(r["payload"])} for r in rows]
+    return [{"id": r["id"], "type": r["kind"], "created": int(r["created"]), **json.loads(r["payload"])} for r in rows]
 
 
 def prune():
@@ -769,7 +769,8 @@ async def sync(request):
         cmds = pending()
     for c in cmds:
         db.execute("update queue set delivered=? where id=?", (time.time(), c["id"]))
-    return web.json_response({"commands": cmds, "now": int(time.time())})
+    maxid = db.execute("select coalesce(max(id), 0) from queue").fetchone()[0]  # lets the egg notice a restored db
+    return web.json_response({"commands": cmds, "now": int(time.time()), "maxid": int(maxid)})
 
 
 async def acked(ack):
