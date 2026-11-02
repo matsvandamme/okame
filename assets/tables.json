@@ -1,0 +1,59 @@
+{
+  "_comment": "The one place for names, labels and prices shared by the firmware, the phone page and the relay. tools/gen_tables.py turns it into lib/okame_core/src/tables.h, the page's T object and the relay's TABLES block. Order matters: it follows the C++ enums in pet.h.",
+  "species": [
+    {"key": "cockatiel", "en": "Cockatiel", "jp": "オカメインコ", "sprite": "adult_idle", "sub": "オカメ · POCKET COCKATIEL", "voice": 1.0},
+    {"key": "budgie", "en": "Budgie", "jp": "セキセイインコ", "sprite": "budgie_adult_idle", "sub": "セキセイ · POCKET BUDGIE", "voice": 1.18},
+    {"key": "owl", "en": "Owl", "jp": "フクロウ", "sprite": "owl_adult_idle", "sub": "フクロウ · POCKET OWL", "voice": 0.3}
+  ],
+  "stages": ["egg", "chick", "juvenile", "adult", "gone"],
+  "variants": ["grey", "pearl", "pied", "scruffy"],
+  "moods": ["content", "meh", "sad", "sick", "asleep"],
+  "results": ["ok", "refused", "not-needed", "sleeping", "away"],
+  "occasions": ["", "hina", "sakura", "kodomo", "tanabata", "halloween", "sinterklaas", "christmas", "newyear", "birthday", "anniversary", "home", "yearend"],
+  "friends": [
+    {"key": "budgie", "en": "Budgie", "jp": "セキセイインコ", "sprite": "fr_budgie", "species": "budgie",
+     "fact": "A chatty little parakeet. Budgies bob their heads to say hello.", "hint": "Drops by in the daytime.", "hintJp": "ひるまに あそびにくるよ",
+     "news": "🦜 A budgie dropped by to visit me today! We bobbed our heads at each other. New friend ✨"},
+    {"key": "pigeon", "en": "Belgian racing pigeon", "jp": "ハト", "sprite": "fr_pigeon",
+     "fact": "Belgium is the home of pigeon racing. This one flies Matthieu's notes and hugs to you.", "hint": "Comes with Matthieu's next note.", "hintJp": "マチューの おてがみと いっしょに",
+     "news": "🕊️ Meet my new friend: a Belgian racing pigeon! From now on it flies Matthieu's notes and hugs to my screen 💌"},
+    {"key": "enaga", "en": "Shima-enaga", "jp": "シマエナガ", "sprite": "fr_enaga",
+     "fact": "The snow fairy of Hokkaido: a tiny white puff with a long tail.", "hint": "Comes in winter, or when it snows.", "hintJp": "ふゆや ゆきの ひに くるよ",
+     "news": "❄️ A shima-enaga came to visit: a tiny snow fairy from Hokkaido! We snuggled ☃️"},
+    {"key": "mejiro", "en": "Mejiro", "jp": "メジロ", "sprite": "fr_mejiro",
+     "fact": "A green bird with white eye-rings that sips nectar from plum blossoms.", "hint": "Comes in plum and sakura season.", "hintJp": "うめと さくらの きせつに",
+     "news": "🌸 A mejiro sang for me from a plum branch today! New friend ✨"},
+    {"key": "owl", "en": "Lucky owl", "jp": "フクロウ", "sprite": "fr_owl", "species": "owl",
+     "fact": "フクロウ sounds like 不苦労, 'no hardship': a lucky charm in Japan.", "hint": "Comes some evenings, and after a 大吉.", "hintJp": "よると だいきちの あとに",
+     "news": "🦉 A lucky owl came to sit with me! フクロウ, 不苦労: no hardship ✨"}
+  ],
+  "places": [
+    {"key": "park", "en": "Park", "jp": "こうえん", "sprite": "pl_tree", "minDays": 0, "emoji": "🌳", "at": "at the park", "lcd": "THE PARK"},
+    {"key": "cafe", "en": "Café", "jp": "カフェ", "sprite": "pl_cup", "minDays": 0, "emoji": "☕", "at": "at the café", "lcd": "THE CAFE"},
+    {"key": "beach", "en": "Beach", "jp": "うみ", "sprite": "umbrella", "minDays": 7, "emoji": "🏖️", "at": "at the beach", "lcd": "THE BEACH"},
+    {"key": "shrine", "en": "Shrine", "jp": "じんじゃ", "sprite": "pl_torii", "minDays": 7, "emoji": "⛩️", "at": "at the shrine", "lcd": "THE SHRINE"},
+    {"key": "windmill", "en": "Windmill", "jp": "ふうしゃ", "sprite": "pl_mill_body", "minDays": 14, "emoji": "🌷", "at": "at the windmill", "lcd": "THE WINDMILL"},
+    {"key": "frites", "en": "Frietkot", "jp": "フリッツ", "sprite": "pl_frites", "minDays": 14, "emoji": "🍟", "at": "at the frietkot", "lcd": "THE FRIETKOT"}
+  ],
+  "toys": [
+    {"key": "swing", "en": "Swing", "jp": "ブランコ", "sprite": "toy_swing", "price": 30},
+    {"key": "bell", "en": "Bell", "jp": "すず", "sprite": "toy_bell", "price": 20},
+    {"key": "mirror", "en": "Mirror", "jp": "かがみ", "sprite": "toy_mirror", "price": 25},
+    {"key": "ladder", "en": "Ladder", "jp": "はしご", "sprite": "toy_ladder", "price": 30},
+    {"key": "perch", "en": "Perch", "jp": "とまりぎ", "sprite": "toy_perch", "price": 20}
+  ],
+  "hats": [
+    {"key": "none", "en": "None", "sprite": null, "how": ""},
+    {"key": "bow", "en": "Bow tie", "sprite": "hat_bow", "how": "first scritch"},
+    {"key": "sunglasses", "en": "Sunglasses", "sprite": "hat_crown", "how": "win 3 games"},
+    {"key": "scarf", "en": "Scarf", "sprite": "hat_beret", "how": "20 care actions"},
+    {"key": "medal", "en": "Heart medal", "sprite": "hat_party", "how": "15 seeds in Seed Rain"},
+    {"key": "sakura", "en": "Sakura flower", "sprite": "hat_sakura", "how": "teach it a song"},
+    {"key": "omamori", "en": "Omamori charm", "sprite": "hat_omamori", "how": "collect all six fortunes"},
+    {"key": "hachimaki", "en": "Study headband", "sprite": "hat_hachimaki", "how": "ten focus sessions"}
+  ],
+  "giftable": 6,
+  "prices": {"treat": 5, "hat": 40},
+  "partyDays": [7, 10, 30, 50, 100, 200, 365],
+  "omikuji": ["大吉", "中吉", "小吉", "吉", "末吉", "凶"]
+}
