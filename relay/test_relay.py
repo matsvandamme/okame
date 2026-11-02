@@ -335,11 +335,13 @@ async def t_hardening():
     async def boom():
         raise RuntimeError("no weather today")
     r.fetch_weather = boom
+    r.log.disabled = True  # the loop logs the traceback on purpose; keep the test output clean
     try:
         await asyncio.wait_for(r.weather_loop(), 0.2)
         survived = False
     except asyncio.TimeoutError:
         survived = True  # still looping (asleep until the next half hour) instead of dead
+    r.log.disabled = False
     r.fetch_weather = real_fetch
     check("weather loop survives an exception", survived)
     # Queue: pairing codes expire, settings supersede, notes wait forever.

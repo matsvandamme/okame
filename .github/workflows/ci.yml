@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    name: native tests, page routes, simulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install platformio pyserial
+      - name: native tests
+        run: pio test -e native
+      - name: page api calls match firmware routes
+        run: python tools/check_routes.py
+      - name: generated sprites are committed
+        run: python tools/gen_sprites.py && git diff --exit-code lib/okame_core/src/sprites.h
+      - name: simulator builds and renders
+        run: pio run -e sim && mkdir -p out/screens && .pio/build/sim/program out/screens | tail -1
+
+  relay:
+    name: relay tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --with aiohttp --with anthropic --with pillow python relay/test_relay.py
+
+  firmware:
+    name: firmware builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio pyserial
+      - name: build (a dev image; releases are signed locally with the key in ~/.okame)
+        run: pio run -e okame
