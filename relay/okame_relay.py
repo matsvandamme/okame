@@ -879,6 +879,8 @@ async def sync(request):
     if body.get("state"):
         before = device["state"]
         device["state"] = body["state"]
+        if isinstance(body.get("health"), dict):  # sent next to the state (0.7.1+): memory, uptime, last reset
+            device["state"]["health"] = body["health"]
         if isinstance(body["state"].get("life"), dict) and "alarm" in body["state"]["life"]:
             alarm_set(body["state"]["life"]["alarm"])  # the egg's saved alarm is the truth (events can be lost)
         kv_set("state", body["state"])
